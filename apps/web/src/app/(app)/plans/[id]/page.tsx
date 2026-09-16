@@ -1,0 +1,214 @@
+import Image from "next/image";
+import { notFound } from "next/navigation";
+import { Check, LockKeyhole, MapPin, Music2, ShieldCheck, Sparkles, UsersRound } from "lucide-react";
+import { getPlan } from "@/lib/api";
+import { planArt } from "@/lib/plan-art";
+import { Button, Pill, PaperCard, SectionTitle } from "@/components/ui";
+import { Avatar } from "@/components/person-card";
+import { RequestToJoin } from "@/components/request-to-join";
+
+function formatWhen(iso: string) {
+  return new Date(iso)
+    .toLocaleString("en-IN", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+    .toUpperCase();
+}
+
+export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]">) {
+  const { id } = await params;
+  const plan = await getPlan(id).catch(() => null);
+  if (!plan) notFound();
+
+  const art = planArt(plan.category, plan.imageUrl);
+  const { composition: mix } = plan;
+  const crewCount = mix.total;
+  const returning = mix.returning;
+  const firstTimers = mix.firstTimers;
+
+  const vibeReasons = [
+    { Icon: Music2, tone: "bg-primary", text: `${plan.vibeTags.length} vibe tags match what you're into` },
+    { Icon: Sparkles, tone: "bg-secondary", text: `${crewCount} people going you haven't met yet` },
+    { Icon: ShieldCheck, tone: "bg-accent", text: `Host rated ★ ${plan.host.trustScore.toFixed(1)} across previous nights` },
+    { Icon: UsersRound, tone: "bg-muted", text: `${returning} returning members vouch for this host` },
+  ];
+
+  return (
+    <div className="pb-24">
+      <div className="relative h-[360px] border-b-2 border-foreground md:h-[480px]">
+        <Image
+          src={art.image}
+          alt={`${plan.title} in ${plan.neighborhood}`}
+          fill
+          priority
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-transparent to-transparent" />
+        <div className="absolute bottom-6 left-5 text-background md:left-10">
+          <Pill tone="orange">{formatWhen(plan.startsAt)}</Pill>
+          <h1 className="mt-4 text-5xl uppercase leading-none md:text-7xl">{plan.title}</h1>
+          <p className="mt-3 flex items-center gap-2 font-mono text-sm font-bold">
+            <MapPin className="size-4" /> {plan.neighborhood}
+            {!plan.exactAddress && " · exact address after approval"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mx-auto grid max-w-[1200px] gap-10 px-5 py-10 lg:grid-cols-[1fr_340px] lg:px-8">
+        <div className="space-y-12">
+          <section>
+            <SectionTitle kicker="No dress code. Good energy only." title="The vibe" />
+            <div className="flex flex-wrap gap-2">
+              {plan.vibeTags.map((tag, i) => (
+                <Pill key={tag} tone={i === 0 ? "orange" : "plain"}>
+                  {tag}
+                </Pill>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle kicker="No mystery percentages" title="Why you might vibe" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {vibeReasons.map(({ Icon, tone, text }) => (
+                <div key={text} className="paper-card flex items-center gap-4 p-4">
+                  <span
+                    className={`${tone} flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-foreground`}
+                  >
+                    <Icon className="size-5" />
+                  </span>
+                  <strong>{text}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle
+              kicker={`${crewCount} / ${plan.capacity} attending`}
+              title="The crew"
+            />
+            <div className="mb-5 flex flex-wrap gap-2">
+              {mix.women > 0 && <Pill>&#9792; {mix.women} women</Pill>}
+              {mix.men > 0 && <Pill>&#9794; {mix.men} men</Pill>}
+              {mix.nonBinary > 0 && <Pill>{mix.nonBinary} non-binary</Pill>}
+              {mix.undisclosed > 0 && <Pill>{mix.undisclosed} not shared</Pill>}
+              <Pill>&#8635; {returning} returning</Pill>
+              <Pill>&#127381; {firstTimers} first-timers</Pill>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {plan.crew.map((member, i) => (
+                <div key={member.user.id} className="paper-card p-4">
+                  <div className="flex gap-4">
+                    <Avatar name={member.user.name} index={i} />
+                    <div className="min-w-0">
+                      <h3 className="text-lg uppercase">{member.user.name}</h3>
+                      <p className="text-sm">
+                        {[member.user.age, member.user.city].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <span className="ml-auto font-mono text-sm font-bold">
+                      ★ {member.user.trustScore.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="mt-4">
+                    <Pill tone={member.role === "HOST" ? "orange" : "plain"}>
+                      {member.role === "HOST"
+                        ? "Host"
+                        : member.firstTime
+                          ? "First time"
+                          : "Returning member"}
+                    </Pill>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <div className="paper-card p-5">
+            <p className="meta-label text-primary">Your host</p>
+            <div className="mt-4 flex items-center gap-4">
+              <Avatar name={plan.host.name} size="lg" />
+              <div>
+                <h2 className="text-2xl uppercase">{plan.host.name}</h2>
+                <p className="font-mono text-sm font-bold">
+                  ★ {plan.host.trustScore.toFixed(1)}
+                </p>
+              </div>
+            </div>
+            {plan.host.bio && <p className="mt-5">{plan.host.bio}</p>}
+            <div className="mt-5 space-y-2 border-t-2 border-foreground pt-4 text-sm font-bold">
+              <p className="flex gap-2">
+                <Check className="size-4 text-accent" /> Phone verified
+              </p>
+              <p className="flex gap-2">
+                <Check className="size-4 text-accent" /> Community history
+              </p>
+            </div>
+          </div>
+
+          {plan.groupHealth.length > 0 && (
+            <div className="paper-card bg-accent p-5">
+              <p className="meta-label">Group health</p>
+              <ul className="mt-2 space-y-1.5">
+                {plan.groupHealth.map((note) => (
+                  <li key={note} className="font-bold">
+                    {note}
+                  </li>
+                ))}
+              </ul>
+              {plan.isHost && plan.crowd && (
+                <p className="mt-3 text-xs">
+                  Your target: {plan.crowd.targetWomen ?? 0} women · {plan.crowd.targetMen ?? 0} men
+                  {plan.crowd.ageMin && ` · ages ${plan.crowd.ageMin}-${plan.crowd.ageMax}`}
+                </p>
+              )}
+            </div>
+          )}
+
+          {plan.exactAddress || plan.isHost ? (
+            <PaperCard className="bg-secondary p-5 text-secondary-foreground">
+              <p className="meta-label">You&apos;re in ✓</p>
+              <h2 className="mt-1 text-2xl uppercase">Party room is open</h2>
+              <p className="mt-2 text-sm">
+                Meet the crew and get the details before the night.
+              </p>
+              <Button href={`/plans/${plan.id}/room`} variant="outline" className="mt-4 w-full">
+                Open party room
+              </Button>
+            </PaperCard>
+          ) : (
+            <PaperCard className="p-5">
+              <h2 className="text-2xl uppercase">Want in?</h2>
+              <div className="mt-4">
+                <RequestToJoin planId={plan.id} />
+              </div>
+            </PaperCard>
+          )}
+
+          <div className="paper-card p-5">
+            <p className="meta-label text-primary">Where</p>
+            <p className="mt-2 font-bold">{plan.neighborhood}</p>
+            {plan.exactAddress ? (
+              <p className="mt-2 text-sm">{plan.exactAddress}</p>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Exact address is shared once the host accepts you.
+              </p>
+            )}
+          </div>
+
+          <p className="text-center text-xs text-muted-foreground">
+            <LockKeyhole className="mr-1 inline size-3" /> Your exact location stays private too.
+          </p>
+        </aside>
+      </div>
+    </div>
+  );
+}
