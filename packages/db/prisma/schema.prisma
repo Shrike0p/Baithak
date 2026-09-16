@@ -1,0 +1,171 @@
+// Minimal slice of docs/ARCHITECTURE.md's full schema — just what Discover,
+// Plan Details, and Request to Join need. Add tables here only when the
+// screen/flow that needs them is next (see docs/PRODUCT_PLAN.md phases).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Self-described and optional. Used only for the aggregate mix shown on a plan
+// (a safety signal for guests) and the host's soft target — never to filter or
+// auto-reject anyone. PREFER_NOT_TO_SAY and null are both excluded from counts.
+enum Gender {
+  WOMAN
+  MAN
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+// id matches the Clerk user id (e.g. "user_abc123") — no separate mapping table.
+model User {
+  id         String   @id
+  name       String
+  age        Int?
+  city       String?
+  occupation String?
+  gender     Gender?
+  bio        String?
+  avatarUrl  String?
+  vibeTags   String[]
+  trustScore Float    @default(0)
+  createdAt  DateTime @default(now())
+
+  hostedPlans  Plan[]
+  attendances  PlanAttendee[]
+  applications Application[]
+  photos       Photo[]
+}
+
+enum PlanCategory {
+  HOUSE_PARTY
+  DRINKS
+  DINNER
+  GAME_NIGHT
+  MOVIE
+  SPORTS
+  TRIP
+  OTHER
+}
+
+enum PlanStatus {
+  DRAFT
+  OPEN
+  FULL
+  COMPLETED
+  CANCELLED
+}
+
+model Plan {
+  id            String       @id @default(cuid())
+  hostId        String
+  host          User         @relation(fields: [hostId], references: [id])
+  title         String
+  category      PlanCategory
+  vibeTags      String[]
+  neighborhood  String
+  exactAddress  String? // never returned publicly — see ARCHITECTURE.md flow 2.4
+  imageUrl      String? // preset cover for now; host uploads once blob storage exists
+  startsAt      DateTime
+  capacity      Int
+  status        PlanStatus   @default(OPEN)
+  createdAt     DateTime     @default(now())
+
+  attendees    PlanAttendee[]
+  applications Application[]
+  crowd        CrowdPreference?
+  photos       Photo[]
+}
+
+// Post-party memories. Uploader is kept so a photo can be attributed/removed;
+// visibility is implicit — only confirmed attendees can read the party room.
+model Photo {
+  id         String   @id @default(cuid())
+  planId     String
+  plan       Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  uploaderId String
+  uploader   User     @relation(fields: [uploaderId], references: [id])
+  url        String
+  caption    String?
+  takenAt    DateTime?
+  createdAt  DateTime @default(now())
+}
+
+enum ConnectionPreference {
+  FRIENDS_OF_FRIENDS
+  COMMUNITY
+  OPEN
+  INVITE_ONLY
+}
+
+// The host's preferred crowd. These are targets that drive the "group health"
+// nudge only — nothing here filters applicants or blocks a request.
+model CrowdPreference {
+  planId               String               @id
+  plan                 Plan                 @relation(fields: [planId], references: [id], onDelete: Cascade)
+  ageMin               Int?
+  ageMax               Int?
+  preferredVibes       String[]
+  targetWomen          Int?
+  targetMen            Int?
+  targetCouples        Int?
+  connectionPreference ConnectionPreference @default(OPEN)
+}
+
+enum AttendeeRole {
+  HOST
+  GUEST
+}
+
+enum AttendeeStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model PlanAttendee {
+  id        String         @id @default(cuid())
+  planId    String
+  plan      Plan           @relation(fields: [planId], references: [id])
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  role      AttendeeRole
+  status    AttendeeStatus @default(CONFIRMED)
+  firstTime Boolean        @default(true)
+  joinedAt  DateTime       @default(now())
+
+  @@unique([planId, userId])
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  PASSED
+  REVIEW_LATER
+}
+
+enum BringingWith {
+  SOLO
+  ONE_FRIEND
+  GROUP
+}
+
+model Application {
+  id           String            @id @default(cuid())
+  planId       String
+  plan         Plan              @relation(fields: [planId], references: [id])
+  applicantId  String
+  applicant    User              @relation(fields: [applicantId], references: [id])
+  status       ApplicationStatus @default(PENDING)
+  bringingWith BringingWith
+  note         String?
+  matchScore   Float?
+  matchReasons String[]
+  createdAt    DateTime          @default(now())
+  decidedAt    DateTime?
+
+  @@unique([planId, applicantId])
+}
