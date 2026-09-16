@@ -5,7 +5,12 @@ import { getCurrentUserId } from "@/lib/current-user";
 const planShape = {
   include: {
     host: { select: { id: true, name: true, trustScore: true } },
-    _count: { select: { attendees: true } },
+    _count: {
+      select: {
+        attendees: true,
+        applications: { where: { status: { in: ["PENDING", "REVIEW_LATER"] } } },
+      },
+    },
   },
 } as const;
 
@@ -22,6 +27,7 @@ function serialize(plan: NonNullable<PlanWithHost>) {
     startsAt: plan.startsAt,
     capacity: plan.capacity,
     confirmedCount: plan._count.attendees,
+    pendingApplications: plan._count.applications,
     host: plan.host,
   };
 }

@@ -157,6 +157,73 @@ async function main() {
     },
   });
 
+  // Ananya hosts one too, so the default signed-in user has an applicant queue.
+  await prisma.plan.upsert({
+    where: { id: "plan_seed_ananya_dinner" },
+    update: {},
+    create: {
+      id: "plan_seed_ananya_dinner",
+      imageUrl: "/assets/dinner-party.jpg",
+      hostId: "user_seed_ananya",
+      title: "Long Table Sunday",
+      category: "DINNER",
+      vibeTags: ["Food", "Music", "Chill", "Bollywood"],
+      neighborhood: "Koramangala, Bangalore",
+      exactAddress: "6th Block, Koramangala, Bangalore",
+      startsAt: new Date(Date.now() + 8 * DAY),
+      capacity: 12,
+    },
+  });
+  await prisma.planAttendee.upsert({
+    where: {
+      planId_userId: { planId: "plan_seed_ananya_dinner", userId: "user_seed_ananya" },
+    },
+    update: {},
+    create: {
+      planId: "plan_seed_ananya_dinner",
+      userId: "user_seed_ananya",
+      role: "HOST",
+      firstTime: false,
+    },
+  });
+  await prisma.crowdPreference.upsert({
+    where: { planId: "plan_seed_ananya_dinner" },
+    update: {},
+    create: {
+      planId: "plan_seed_ananya_dinner",
+      ageMin: 23,
+      ageMax: 32,
+      preferredVibes: ["Food", "Music"],
+      targetWomen: 5,
+      targetMen: 5,
+      connectionPreference: "OPEN",
+    },
+  });
+
+  const APPLICANTS = [
+    { id: "user_seed_rahul", bringingWith: "SOLO" as const, note: "Heard about this from Priya. I'll bring wine." },
+    { id: "user_seed_priya", bringingWith: "ONE_FRIEND" as const, note: null },
+    { id: "user_seed_maya", bringingWith: "SOLO" as const, note: "Been meaning to cook for people again." },
+    { id: "user_seed_karan", bringingWith: "GROUP" as const, note: "Three of us, all easy going." },
+    { id: "user_seed_dev", bringingWith: "SOLO" as const, note: "Chef here — happy to help in the kitchen." },
+    { id: "user_seed_sara", bringingWith: "SOLO" as const, note: "New to Bangalore, looking for a Sunday crowd." },
+  ];
+
+  for (const a of APPLICANTS) {
+    await prisma.application.upsert({
+      where: {
+        planId_applicantId: { planId: "plan_seed_ananya_dinner", applicantId: a.id },
+      },
+      update: {},
+      create: {
+        planId: "plan_seed_ananya_dinner",
+        applicantId: a.id,
+        bringingWith: a.bringingWith,
+        note: a.note,
+      },
+    });
+  }
+
   // A pending request so the Plans page has something in "Requested"
   await prisma.application.upsert({
     where: {

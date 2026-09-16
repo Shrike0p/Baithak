@@ -19,29 +19,42 @@ Last verified: 2026-09-16.
 | Plans | Going / Requested / Hosting |
 | People | Met / suggested, with explained reasons |
 | Party Room | People / Today / Memories tabs, gated to confirmed attendees. **No chat** (deliberate) |
+| Host desk | Ranked applicant queue, accept / pass / review-later, live crew panel |
 | App shell | Sticky header, sidebar, mobile nav, themed 404 |
 
 **Schema:** `User`, `Plan`, `PlanAttendee`, `Application`, `CrowdPreference`, `Photo` (4 migrations).
 
 **Known gaps in what exists:**
-- No accept/decline — `Application` can never leave `PENDING`, so the core loop is severed.
 - No auth — every request is `user_seed_ananya` via an `x-user-id` header. Anyone can impersonate anyone.
 - `trustScore` is a seeded float that nothing ever recomputes.
-- `matchScore` / applicant ranking not implemented.
-- Sidebar links to `/host`, `/profile`, `/settings`, `/notifications` — all 404.
-- No tests, no pagination, not deployed, **not committed to git**.
+- Sidebar links to `/profile`, `/settings`, `/notifications` — all 404.
+- Ranking is computed per request and never written to `Application.matchScore`.
+- No tests, no pagination, not deployed.
 
 ---
 
-## Do these first (not features)
+## Outstanding chore
 
-**1. Commit the work.** Everything so far is untracked. `git add` the project (the `.gitignore` already excludes `node_modules`, `.next`, `.env`) and commit before building further.
-
-**2. Add one test command.** `turbo.json` already declares a `test` task but no package defines a `test` script, so `pnpm test` silently does nothing. Add Vitest to `packages/db` or `apps/api` and write one real test (the address-reveal gate in `apps/api/src/app/api/plans/[id]/route.ts` is the highest-value thing to pin down — it's a privacy guarantee).
+**Add one test command.** `turbo.json` already declares a `test` task but no package defines a `test` script, so `pnpm test` silently does nothing. Add Vitest to `packages/db` or `apps/api` and write one real test (the address-reveal gate in `apps/api/src/app/api/plans/[id]/route.ts` is the highest-value thing to pin down — it's a privacy guarantee).
 
 ---
 
-## Milestone 1 — Close the loop (accept / decline)
+## ~~Milestone 1 — Close the loop (accept / decline)~~ — DONE
+
+Shipped. `GET /api/plans/[id]/applications` ranks the queue, `PATCH
+/api/applications/[id]` records the decision, and accepting creates the
+`PlanAttendee` row inside a transaction — which is what unlocks the party room
+and the exact address for that guest. `/host` is the three-pane desk.
+
+Ranking is a plain weighted formula in `apps/api/src/lib/matching.ts` (shared
+vibes, mutuals already coming, trust, returning-to-this-host). It sets the
+order only; the host taps every decision. The UI shows the reasons, never the
+score.
+
+Guards covered: non-hosts get 403, unknown statuses 400, a full plan 409.
+
+<details>
+<summary>Original plan</summary>
 
 **Why first:** the product cannot currently work end to end. Applications are created and then nothing can ever happen to them. This is also the brief's flagship screen (the "50 DMs" problem) and it needs no new tables.
 
@@ -55,6 +68,8 @@ Last verified: 2026-09-16.
 **Start here:** `apps/api/src/app/api/plans/[id]/applications/route.ts` already has the `POST`. Add a `GET` beside it, then the `PATCH` route, then the screen. Reuse `composeCrew`/`groupHealth` from `apps/api/src/lib/composition.ts` for the right-hand panel.
 
 **Done when:** you can apply as one user, switch the `x-user-id` header to the host, accept, and the applicant appears in the crew with the Party Room unlocked for them.
+
+</details>
 
 ---
 

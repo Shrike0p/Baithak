@@ -76,8 +76,12 @@ export function getPlan(id: string) {
   return apiFetch<PlanDetail>(`/api/plans/${id}`);
 }
 
+export interface HostedPlan extends PlanSummary {
+  pendingApplications: number;
+}
+
 export interface MyPlans {
-  hosting: PlanSummary[];
+  hosting: HostedPlan[];
   going: PlanSummary[];
   requested: (PlanSummary & { appliedAt: string })[];
 }
@@ -143,6 +147,61 @@ export interface PartyRoom {
 
 export function getPartyRoom(planId: string) {
   return apiFetch<PartyRoom>(`/api/plans/${planId}/room`);
+}
+
+export interface Applicant {
+  id: string;
+  status: "PENDING" | "ACCEPTED" | "PASSED" | "REVIEW_LATER";
+  bringingWith: "SOLO" | "ONE_FRIEND" | "GROUP";
+  note: string | null;
+  createdAt: string;
+  score: number;
+  reasons: string[];
+  bucket: "best" | "good" | "new" | "later";
+  mutuals: number;
+  returningToThisHost: boolean;
+  applicant: {
+    id: string;
+    name: string;
+    age: number | null;
+    city: string | null;
+    occupation: string | null;
+    bio: string | null;
+    vibeTags: string[];
+    trustScore: number;
+    plansAttended: number;
+    plansHosted: number;
+  };
+}
+
+export interface ApplicantQueue {
+  plan: {
+    id: string;
+    title: string;
+    neighborhood: string;
+    startsAt: string;
+    capacity: number;
+    imageUrl: string | null;
+    vibeTags: string[];
+  };
+  composition: Composition;
+  groupHealth: string[];
+  applications: Applicant[];
+}
+
+export function getApplicants(planId: string) {
+  return apiFetch<ApplicantQueue>(`/api/plans/${planId}/applications`);
+}
+
+export function decideApplication(
+  applicationId: string,
+  status: "ACCEPTED" | "PASSED" | "REVIEW_LATER"
+) {
+  return apiFetch(`/api/applications/${applicationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
 }
 
 export function getMyPlans() {
