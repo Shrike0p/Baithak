@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+
+# turbo
+.turbo/
+
+# build
+dist/
+build/
+
+# env
+.env
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+.vercel
+
+# third-party agent skills — vendored by `npx skills add`, reproducible from
+# skills-lock.json (which IS tracked), so no need to commit the copies
+.agents/
+.claude/
