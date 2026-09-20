@@ -8,7 +8,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Serverless functions each open their own connection, and Postgres runs out
+  // long before the traffic does. DATABASE_URL points at Supabase's pooler
+  // (port 6543, ?pgbouncer=true&connection_limit=1).
+  url       = env("DATABASE_URL")
+  // Migrations and introspection can't run through a transaction pooler, so
+  // they use a direct connection (port 5432). Locally both are the same URL.
+  directUrl = env("DIRECT_URL")
 }
 
 // Self-described and optional. Used only for the aggregate mix shown on a plan
@@ -21,24 +27,95 @@ enum Gender {
   PREFER_NOT_TO_SAY
 }
 
-// id matches the Clerk user id (e.g. "user_abc123") — no separate mapping table.
+// Core auth fields (email .. image) are owned by Better Auth; the rest is ours
+// and is written by onboarding. Gender stays a Prisma enum rather than a Better
+// Auth additionalField so the database keeps enforcing the allowed values.
 model User {
-  id         String   @id
-  name       String
-  age        Int?
-  city       String?
-  occupation String?
-  gender     Gender?
-  bio        String?
-  avatarUrl  String?
-  vibeTags   String[]
-  trustScore Float    @default(0)
-  createdAt  DateTime @default(now())
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
+  age         Int?
+  city        String?
+  occupation  String?
+  gender      Gender?
+  bio         String?
+  // One social account, as a trust signal — a host deciding on a stranger
+  // wants to see the person exists elsewhere. LinkedIn carries the most
+  // weight; Instagram is the common fallback. Stored as a full URL and
+  // validated against an allowlist of hosts in apps/api.
+  socialUrl   String?
+  vibeTags    String[] @default([])
+  trustScore  Float     @default(0)
+  onboardedAt DateTime?
+
+  sessions     Session[]
+  accounts     Account[]
   hostedPlans  Plan[]
   attendances  PlanAttendee[]
   applications Application[]
   photos       Photo[]
+  blocksMade   Block[]   @relation("blocker")
+  blocksGot    Block[]   @relation("blocked")
+  reportsMade  Report[]  @relation("reporter")
+  reportsGot   Report[]  @relation("reported")
+  notifications Notification[]
+  reviewsWritten Review[]       @relation("reviewsWritten")
+  hangoutPicks   HangoutAgain[] @relation("hangoutPicks")
+  connectionsA   Connection[]   @relation("connectionsA")
+  connectionsB   Connection[]   @relation("connectionsB")
+  messages       Message[]
+}
+
+// Sessions live here rather than in a stateless token so apps/api can validate
+// against the same database, and revoking one takes effect immediately.
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// One row per sign-in method. Password hashes live here, never on User.
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
 }
 
 enum PlanCategory {
@@ -79,10 +156,17 @@ model Plan {
   applications Application[]
   crowd        CrowdPreference?
   photos       Photo[]
+  reports      Report[]
+  reviews      Review[]
+  messages     Message[]
 }
 
-// Post-party memories. Uploader is kept so a photo can be attributed/removed;
-// visibility is implicit — only confirmed attendees can read the party room.
+// Post-party memories. Uploader is kept so a photo can be attributed/removed.
+//
+// Visibility is attendee-only by default — guests shared these of a private
+// house party, not of the internet. isPublic is the host's opt-in for their own
+// uploads, used for the teaser on a wrapped-up party (see
+// docs/superpowers/specs/2026-09-18-party-lifecycle-design.md).
 model Photo {
   id         String   @id @default(cuid())
   planId     String
@@ -92,7 +176,190 @@ model Photo {
   url        String
   caption    String?
   takenAt    DateTime?
+  isPublic   Boolean  @default(false)
   createdAt  DateTime @default(now())
+}
+
+/**
+ * One person choosing not to see another. Enforced on read — a blocked
+ * person's plans and profile disappear from the blocker's view, and neither
+ * can apply to the other's plans.
+ *
+ * Deliberately one-directional and silent: the blocked person is never told,
+ * because telling them is how blocking turns into a confrontation.
+ */
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blocker   User     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+}
+
+/**
+ * A report of a person or a plan. There is no moderation queue yet — these are
+ * written so the record exists from day one, because the alternative is asking
+ * people to report things into a void and losing the evidence.
+ */
+model Report {
+  id         String       @id @default(cuid())
+  reporterId String
+  reporter   User         @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  subjectId  String?
+  subject    User?        @relation("reported", fields: [subjectId], references: [id])
+  planId     String?
+  plan       Plan?        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  reason     ReportReason
+  detail     String?
+  createdAt  DateTime     @default(now())
+
+  @@index([subjectId])
+}
+
+/**
+ * Things that happened to you while you weren't looking.
+ *
+ * Written at the moment the thing happens rather than derived on read — a
+ * derived feed can't record that a plan was cancelled, because the evidence is
+ * exactly what gets mutated.
+ *
+ * `planId` and `actorId` are soft links: a notification survives the plan or
+ * person going away, because the text is already baked in.
+ */
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  title     String
+  body      String?
+  href      String?
+  planId    String?
+  actorId   String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum NotificationKind {
+  APPLICATION_ACCEPTED
+  APPLICATION_DECLINED
+  NEW_APPLICANT
+  PLAN_CANCELLED
+  PLAN_WRAPPED
+  NEW_PHOTOS
+}
+
+/**
+ * What someone thought of a night, filed after it wrapped.
+ *
+ * Ratings are the raw material for `User.trustScore`, which until now was a
+ * seeded number nothing ever recomputed — every star in the product was
+ * fiction. One review per person per plan.
+ *
+ * `privateNote` is never shown to anyone but us: a guest has to be able to say
+ * "the host was creepy" without it appearing under their name. Product plan
+ * §21.
+ */
+model Review {
+  id             String       @id @default(cuid())
+  planId         String
+  plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  reviewerId     String
+  reviewer       User         @relation("reviewsWritten", fields: [reviewerId], references: [id], onDelete: Cascade)
+  hostRating     Int
+  crowdRating    Int
+  vibeRating     Int
+  safetyRating   Int
+  attendAgain    AttendAgain
+  privateNote    String?
+  hangoutAgain   HangoutAgain[]
+  createdAt      DateTime     @default(now())
+
+  @@unique([planId, reviewerId])
+  @@index([planId])
+}
+
+enum AttendAgain {
+  YES
+  MAYBE
+  NO
+}
+
+/**
+ * "I'd hang out with them again." Kept private until it's mutual — telling
+ * someone they were picked when they didn't pick back is a small cruelty, and
+ * the whole point is that a connection is agreed by both people.
+ */
+model HangoutAgain {
+  id           String @id @default(cuid())
+  reviewId     String
+  review       Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  targetUserId String
+  target       User   @relation("hangoutPicks", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, targetUserId])
+  @@index([targetUserId])
+}
+
+/**
+ * A mutual "hang out again". This is what finally makes "2 mutual connections"
+ * a real thing rather than something derived from having been in the same room.
+ *
+ * Stored with the ids sorted so a pair can only exist once, in one direction.
+ */
+model Connection {
+  id        String           @id @default(cuid())
+  userAId   String
+  userA     User             @relation("connectionsA", fields: [userAId], references: [id], onDelete: Cascade)
+  userBId   String
+  userB     User             @relation("connectionsB", fields: [userBId], references: [id], onDelete: Cascade)
+  source    ConnectionSource @default(MUTUAL_HANGOUT_AGAIN)
+  createdAt DateTime         @default(now())
+
+  @@unique([userAId, userBId])
+  @@index([userBId])
+}
+
+enum ConnectionSource {
+  MUTUAL_HANGOUT_AGAIN
+  SAME_PLAN
+  MANUAL
+}
+
+/**
+ * Party Room chat. Group only — there are no DMs, on purpose: you earn access
+ * to a conversation by being accepted into the plan, which means nobody can be
+ * cold-messaged by a stranger.
+ *
+ * Delivered by polling the table, not WebSockets (which Vercel Functions can't
+ * hold open) and not LiveKit (which bills per connection-minute, a media price
+ * for moving a sentence). Supabase Realtime subscribes to these same rows when
+ * rooms get busy enough to notice the delay.
+ */
+model Message {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([planId, createdAt])
+}
+
+enum ReportReason {
+  HARASSMENT
+  FAKE_PROFILE
+  UNSAFE_BEHAVIOUR
+  SPAM
+  SOMETHING_ELSE
 }
 
 enum ConnectionPreference {
@@ -129,7 +396,9 @@ enum AttendeeStatus {
 model PlanAttendee {
   id        String         @id @default(cuid())
   planId    String
-  plan      Plan           @relation(fields: [planId], references: [id])
+  // Cascades: deleting a plan is only permitted while nobody but the host is
+  // on it, and the host's own row shouldn't block that.
+  plan      Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
   userId    String
   user      User           @relation(fields: [userId], references: [id])
   role      AttendeeRole
@@ -156,7 +425,7 @@ enum BringingWith {
 model Application {
   id           String            @id @default(cuid())
   planId       String
-  plan         Plan              @relation(fields: [planId], references: [id])
+  plan         Plan              @relation(fields: [planId], references: [id], onDelete: Cascade)
   applicantId  String
   applicant    User              @relation(fields: [applicantId], references: [id])
   status       ApplicationStatus @default(PENDING)
