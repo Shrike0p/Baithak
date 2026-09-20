@@ -1,5 +1,5 @@
 {
-  "extends": "@scene/typescript-config/base.json",
+  "extends": "@baithak/typescript-config/base.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src"

@@ -36,12 +36,12 @@
   --color-ink-soft: var(--ink-soft);
   --color-border: var(--border);
 
-  /* Declared, not downloaded — same as the reference design, which renders via
-     the system fallback unless the font happens to be installed locally.
-     Swap in next/font loads here if we ever want the real faces. */
-  --font-display: "Archivo Black", sans-serif;
-  --font-sans: "DM Sans", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  /* Self-hosted via next/font in app/layout.tsx — the *-loaded variables come
+     from there. The quoted names stay as a fallback for anyone who has the
+     faces installed, in case a font request fails. */
+  --font-display: var(--font-display-loaded), "Archivo Black", sans-serif;
+  --font-sans: var(--font-sans-loaded), "DM Sans", sans-serif;
+  --font-mono: var(--font-mono-loaded), "IBM Plex Mono", monospace;
 
   --radius-sm: var(--radius);
 

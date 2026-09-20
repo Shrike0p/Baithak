@@ -1,8 +1,8 @@
-# Scene
+# Baithak
 
 You don't need a squad to have plans.
 
-Scene helps people find trusted small-group social plans — house parties, drinks, dinners, game nights — and meet the crew before they turn up. Starting with Bangalore.
+Baithak helps people find trusted small-group social plans — house parties, drinks, dinners, game nights — and meet the crew before they turn up. Starting with Bangalore.
 
 Turborepo monorepo: frontend and backend apps side by side, sharing types, config and the database client.
 
@@ -13,8 +13,8 @@ apps/
   web/     Next.js 16 frontend (App Router, Tailwind v4) — port 3000
   api/     Next.js 16 backend, route handlers only        — port 3001
 packages/
-  db/                Prisma schema + client (@scene/db)
-  types/             Shared domain types (@scene/types)
+  db/                Prisma schema + client (@baithak/db)
+  types/             Shared domain types (@baithak/types)
   typescript-config/ Shared tsconfig bases
 docs/
   PRODUCT_PLAN.md    Product brief, design system, screen inventory
@@ -33,8 +33,8 @@ createdb scene
 pnpm install
 cp apps/web/.env.local.example apps/web/.env.local
 
-pnpm --filter @scene/db db:migrate    # apply migrations
-pnpm --filter @scene/db db:seed       # fake users, plans, photos
+pnpm --filter @baithak/db db:migrate    # apply migrations
+pnpm --filter @baithak/db db:seed       # fake users, plans, photos
 
 pnpm dev                              # both apps in parallel
 ```
@@ -54,10 +54,25 @@ pnpm build                        # build everything (turbo, cached)
 pnpm lint                         # lint everything
 pnpm type-check                   # typecheck everything
 
-pnpm --filter @scene/db db:studio  # browse the database
-pnpm --filter @scene/db db:generate # regenerate the Prisma client
+pnpm --filter @baithak/db db:studio  # browse the database
+pnpm --filter @baithak/db db:generate # regenerate the Prisma client
 ```
+
+## Signing in
+
+Auth is self-hosted (Better Auth, email + password, sessions in Postgres). The seed
+creates real accounts — sign in as any seeded user:
+
+```
+ananya@seed.local   (hosts a plan with 6 people waiting)
+prakhar@seed.local  sara@seed.local  rahul@seed.local  …
+password: scene1234
+```
+
+Set `BETTER_AUTH_SECRET` in `packages/db/.env`, `apps/web/.env.local` and
+`apps/api/.env.local` — it must match across all three.
 
 ## Notes
 
-There is no authentication yet — the API reads an `x-user-id` header and defaults to a seeded user. See `docs/ROADMAP.md` for what that blocks and what's planned next.
+Email verification is disabled until an email provider is wired up. See
+`docs/ROADMAP.md` for what's built and what's next.

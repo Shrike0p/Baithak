@@ -1,4 +1,4 @@
-# Scene — Architecture & Data Model
+# Baithak — Architecture & Data Model
 
 Companion to [`docs/PRODUCT_PLAN.md`](PRODUCT_PLAN.md). This doc answers "what are the moving parts and how does data flow between them" — meant to be sketched on a whiteboard (tldraw) before any schema/code is written. Nothing here is implemented yet.
 

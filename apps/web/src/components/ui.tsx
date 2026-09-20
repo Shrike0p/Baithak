@@ -1,15 +1,21 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
-/** Rotated stamp tile + wordmark. Straightens slightly on hover. */
+/** B mark + wordmark. The tilted mark straightens on hover. */
 export function Logo({ compact = false, href = "/" }: { compact?: boolean; href?: string }) {
   return (
-    <Link href={href} aria-label="Scene home" className="group flex items-center gap-2">
-      <span className="flex size-9 rotate-[-3deg] items-center justify-center border-2 border-foreground bg-primary font-display text-xl shadow-stamp-sm transition-transform group-hover:rotate-2">
-        S
-      </span>
-      {!compact && <span className="font-display text-xl">SCENE</span>}
+    <Link href={href} aria-label="Baithak home" className="group flex items-center gap-2.5">
+      <Image
+        src="/assets/logo/baithak-logo-2.png"
+        alt=""
+        width={440}
+        height={456}
+        priority
+        className="h-10 w-auto -rotate-6 transition-transform group-hover:rotate-0"
+      />
+      {!compact && <span className="font-display text-xl tracking-wide">BAITHAK</span>}
     </Link>
   );
 }
@@ -44,7 +50,7 @@ export function Pill({
 
   return (
     <span
-      className={`meta-label inline-flex items-center gap-1 rounded-full border border-foreground px-2.5 py-1 ${tones[tone]} ${className}`}
+      className={`meta-label inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-foreground px-2.5 py-1 ${tones[tone]} ${className}`}
     >
       {children}
     </span>
@@ -59,7 +65,10 @@ const BUTTON_VARIANTS = {
     "bg-primary text-primary-foreground shadow-stamp hover:-translate-y-0.5 hover:shadow-stamp-lg",
   secondary:
     "bg-secondary text-secondary-foreground shadow-stamp hover:-translate-y-0.5 hover:shadow-stamp-lg",
-  outline: "bg-background shadow-stamp-sm hover:bg-muted",
+  // text-foreground is not redundant: outline buttons sit inside bg-secondary
+  // panels that set a near-white text colour, and without this they inherit it
+  // onto a cream background and vanish.
+  outline: "bg-background text-foreground shadow-stamp-sm hover:bg-muted",
 };
 
 const BUTTON_SIZES = {

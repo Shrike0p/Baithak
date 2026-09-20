@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Scene API",
-  description: "Backend API for Scene",
+  title: "Baithak API",
+  description: "Backend API for Baithak",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

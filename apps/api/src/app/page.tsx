@@ -1,3 +1,3 @@
 export default function Home() {
-  return <p>Scene API</p>;
+  return <p>Baithak API</p>;
 }

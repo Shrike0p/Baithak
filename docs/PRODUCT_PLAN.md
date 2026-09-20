@@ -1,12 +1,12 @@
-# Scene — Product Plan
+# Baithak — Product Plan
 
-This is the persistent product/design context for **Scene**. Read this before building any product feature — it captures the full brief, the design system, the complete screen inventory, and which phase we're in, so no prior conversation needs to be re-explained.
+This is the persistent product/design context for **Baithak**. Read this before building any product feature — it captures the full brief, the design system, the complete screen inventory, and which phase we're in, so no prior conversation needs to be re-explained.
 
 ## 1. Product Summary
 
 **Pitch:** "You don't need a squad to have plans."
 
-Scene helps people discover trusted small-group social plans (house parties, drinks, dinners, game nights, trips) and meet new people in real life — starting with house parties in Bangalore. It solves two matched problems at once:
+Baithak helps people discover trusted small-group social plans (house parties, drinks, dinners, game nights, trips) and meet new people in real life — starting with house parties in Bangalore. It solves two matched problems at once:
 
 - **Guests** want to do something this weekend but don't have a group, and don't want to blindly show up at a stranger's house.
 - **Hosts** get flooded with DMs from strangers and have no good way to tell who's genuine, who fits the vibe, or how to balance the group — without manually vetting 50 people.
