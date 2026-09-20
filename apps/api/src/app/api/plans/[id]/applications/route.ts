@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@scene/db";
+import { prisma } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
 import { scoreApplicant, bucketFor } from "@/lib/matching";
 import { composeCrew, groupHealth } from "@/lib/composition";
+import { profileStrength } from "@baithak/types";
+import { describeSocial } from "@/lib/social";
+import { notify } from "@/lib/notify";
 
 /** The host's applicant queue for one plan. Host only. */
 export async function GET(
@@ -10,7 +13,9 @@ export async function GET(
   ctx: RouteContext<"/api/plans/[id]/applications">
 ) {
   const { id: planId } = await ctx.params;
-  const userId = getCurrentUserId(request);
+  const userId = await getCurrentUserId(request);
+  if (!userId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
+
 
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
@@ -93,6 +98,8 @@ export async function GET(
       applicant: {
         id: app.applicant.id,
         name: app.applicant.name,
+        image: app.applicant.image,
+        social: describeSocial(app.applicant.socialUrl),
         age: app.applicant.age,
         city: app.applicant.city,
         occupation: app.applicant.occupation,
@@ -131,7 +138,28 @@ export async function POST(
   ctx: RouteContext<"/api/plans/[id]/applications">
 ) {
   const { id: planId } = await ctx.params;
-  const applicantId = getCurrentUserId(request);
+  const applicantId = await getCurrentUserId(request);
+  if (!applicantId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
+
+  // A blank profile arrives in the host's queue with nothing to judge, gets
+  // passed on, and the applicant never learns why. Better to stop it here and
+  // say what's missing.
+  const applicant = await prisma.user.findUnique({
+    where: { id: applicantId },
+    select: { name: true, age: true, city: true, occupation: true, bio: true, socialUrl: true, vibeTags: true },
+  });
+  const strength = applicant ? profileStrength(applicant) : null;
+  if (!strength?.canApply) {
+    return NextResponse.json(
+      {
+        error: "profile incomplete",
+        message: "Hosts need to know who they'd be letting in.",
+        missing: strength?.missingRequired.map((s) => s.key) ?? ["basics", "vibe"],
+      },
+      { status: 422 }
+    );
+  }
+
   const body = await request.json();
 
   const bringingWith = body.bringingWith ?? "SOLO";
@@ -142,6 +170,22 @@ export async function POST(
     update: { bringingWith, note },
     create: { planId, applicantId, bringingWith, note },
   });
+
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+    select: { hostId: true, title: true },
+  });
+  if (plan) {
+    notify({
+      userId: plan.hostId,
+      kind: "NEW_APPLICANT",
+      title: `${applicant?.name ?? "Someone"} wants in`,
+      body: plan.title,
+      href: `/host?plan=${planId}`,
+      planId,
+      actorId: applicantId,
+    });
+  }
 
   return NextResponse.json(application, { status: 201 });
 }

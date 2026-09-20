@@ -1,15 +1,59 @@
+import { hashPassword } from "better-auth/crypto";
 import { prisma } from "../src/index";
 import type { PlanCategory } from "@prisma/client";
 
+// Every seeded user signs in with this — handy for testing multi-user flows.
+const SEED_PASSWORD = "scene1234";
+
+/**
+ * Trust is earned, so the seed doesn't hand it out. Everyone starts at the
+ * floor and the real formula moves them once reviews exist — a seeded 4.8 was
+ * exactly the fiction that `Review` was built to replace.
+ */
+async function recomputeAllTrust() {
+  const { trustScore } = await import("@baithak/types");
+  const users = await prisma.user.findMany({
+    select: { id: true, _count: { select: { hostedPlans: true, attendances: true } } },
+  });
+
+  for (const user of users) {
+    const hosted = await prisma.review.findMany({
+      where: { plan: { hostId: user.id } },
+      select: { hostRating: true },
+    });
+    const asGuest = await prisma.review.findMany({
+      where: {
+        plan: { attendees: { some: { userId: user.id, role: "GUEST", status: "CONFIRMED" } } },
+        reviewerId: { not: user.id },
+      },
+      select: { crowdRating: true },
+    });
+    const connections = await prisma.connection.count({
+      where: { OR: [{ userAId: user.id }, { userBId: user.id }] },
+    });
+
+    const { score } = trustScore({
+      plansAttended: user._count.attendances,
+      plansHosted: user._count.hostedPlans,
+      ratings:
+        user._count.hostedPlans > 0
+          ? hosted.map((r) => r.hostRating)
+          : asGuest.map((r) => r.crowdRating),
+      connections,
+    });
+    await prisma.user.update({ where: { id: user.id }, data: { trustScore: score } });
+  }
+}
+
 const USERS = [
-  { id: "user_seed_ananya", name: "Ananya", age: 25, occupation: "Designer", gender: "WOMAN" as const, trustScore: 4.8, vibeTags: ["Bollywood", "Travel", "Drinks"], bio: "Designer, playlist hoarder, always down for a late dinner." },
-  { id: "user_seed_prakhar", name: "Prakhar", age: 27, occupation: "Design", gender: "MAN" as const, trustScore: 4.8, vibeTags: ["Bollywood", "Music", "Dancing"], bio: "Hosts a house party most weekends. Making sure no one feels like the odd one out." },
-  { id: "user_seed_rahul", name: "Rahul", age: 26, occupation: "Product", gender: "MAN" as const, trustScore: 4.7, vibeTags: ["Football", "Music", "Chill"], bio: "Will argue about football and playlists in equal measure." },
-  { id: "user_seed_priya", name: "Priya", age: 24, occupation: "Filmmaker", gender: "WOMAN" as const, trustScore: 4.9, vibeTags: ["Movies", "Food", "Dance"], bio: "Filmmaker. Knows every hole-in-the-wall dosa place in the city." },
-  { id: "user_seed_karan", name: "Karan", age: 27, occupation: "Founder", gender: "MAN" as const, trustScore: 4.6, vibeTags: ["Tech", "Trips", "Games"], bio: "Building something. Needs to leave the laptop at home more often." },
-  { id: "user_seed_maya", name: "Maya", age: 28, occupation: "Architect", gender: "WOMAN" as const, trustScore: 4.9, vibeTags: ["Music", "Drinks", "Art"], bio: "Rooftops, records, and long conversations." },
-  { id: "user_seed_dev", name: "Dev", age: 26, occupation: "Chef", gender: "MAN" as const, trustScore: 4.7, vibeTags: ["Food", "Travel", "Music"], bio: "Cooks for a living, still says yes to dinner plans." },
-  { id: "user_seed_sara", name: "Sara", age: 24, occupation: "Writer", gender: "WOMAN" as const, trustScore: 4.8, vibeTags: ["Bollywood", "Movies", "Chill"], bio: "New to Bangalore. Looking for a regular Sunday crowd." },
+  { id: "user_seed_ananya", name: "Ananya", age: 25, occupation: "Designer", gender: "WOMAN" as const, vibeTags: ["Bollywood", "Travel", "Drinks"], bio: "Designer, playlist hoarder, always down for a late dinner." },
+  { id: "user_seed_prakhar", name: "Prakhar", age: 27, occupation: "Design", gender: "MAN" as const, vibeTags: ["Bollywood", "Music", "Dancing"], bio: "Hosts a house party most weekends. Making sure no one feels like the odd one out." },
+  { id: "user_seed_rahul", name: "Rahul", age: 26, occupation: "Product", gender: "MAN" as const, vibeTags: ["Football", "Music", "Chill"], bio: "Will argue about football and playlists in equal measure." },
+  { id: "user_seed_priya", name: "Priya", age: 24, occupation: "Filmmaker", gender: "WOMAN" as const, vibeTags: ["Movies", "Food", "Dance"], bio: "Filmmaker. Knows every hole-in-the-wall dosa place in the city." },
+  { id: "user_seed_karan", name: "Karan", age: 27, occupation: "Founder", gender: "MAN" as const, vibeTags: ["Tech", "Trips", "Games"], bio: "Building something. Needs to leave the laptop at home more often." },
+  { id: "user_seed_maya", name: "Maya", age: 28, occupation: "Architect", gender: "WOMAN" as const, vibeTags: ["Music", "Drinks", "Art"], bio: "Rooftops, records, and long conversations." },
+  { id: "user_seed_dev", name: "Dev", age: 26, occupation: "Chef", gender: "MAN" as const, vibeTags: ["Food", "Travel", "Music"], bio: "Cooks for a living, still says yes to dinner plans." },
+  { id: "user_seed_sara", name: "Sara", age: 24, occupation: "Writer", gender: "WOMAN" as const, vibeTags: ["Bollywood", "Movies", "Chill"], bio: "New to Bangalore. Looking for a regular Sunday crowd." },
 ];
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -90,8 +134,25 @@ const PLANS = [
 ];
 
 async function main() {
+  const passwordHash = await hashPassword(SEED_PASSWORD);
+
   for (const u of USERS) {
-    await prisma.user.upsert({ where: { id: u.id }, update: u, create: u });
+    const email = `${u.name.toLowerCase()}@seed.local`;
+    const data = { ...u, email, emailVerified: true, onboardedAt: new Date() };
+    await prisma.user.upsert({ where: { id: u.id }, update: data, create: data });
+
+    // A credential account so you can actually sign in as them.
+    await prisma.account.upsert({
+      where: { id: `acct_${u.id}` },
+      update: { password: passwordHash },
+      create: {
+        id: `acct_${u.id}`,
+        accountId: u.id,
+        providerId: "credential",
+        userId: u.id,
+        password: passwordHash,
+      },
+    });
   }
 
   for (const p of PLANS) {
@@ -238,7 +299,11 @@ async function main() {
     },
   });
 
+  await recomputeAllTrust();
+
   console.log(`Seeded: ${USERS.length} users, ${PLANS.length} plans`);
+  console.log(`Sign in as any of: ${USERS.map((u) => u.name.toLowerCase() + "@seed.local").join(", ")}`);
+  console.log(`Password: ${SEED_PASSWORD}`);
 }
 
 main()

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@scene/db";
+import { prisma } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
+import { describeSocial } from "@/lib/social";
+import { hiddenUserIds } from "@/lib/blocks";
 
 export async function GET(request: NextRequest) {
-  const userId = getCurrentUserId(request);
+  const userId = await getCurrentUserId(request);
+  if (!userId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
+
 
   const me = await prisma.user.findUnique({
     where: { id: userId },
@@ -13,8 +17,9 @@ export async function GET(request: NextRequest) {
 
   const myPlanIds = me.attendances.map((a) => a.planId);
 
+  const hidden = await hiddenUserIds(userId);
   const others = await prisma.user.findMany({
-    where: { id: { not: userId } },
+    where: { id: { notIn: [userId, ...hidden] } },
     include: {
       attendances: { select: { planId: true } },
       _count: { select: { hostedPlans: true } },
@@ -33,11 +38,16 @@ export async function GET(request: NextRequest) {
       reasons.push(`You've been to ${shared.length} of the same plan${shared.length > 1 ? "s" : ""}`);
     if (person._count.hostedPlans > 0)
       reasons.push(`Hosts their own plans · ★ ${person.trustScore.toFixed(1)}`);
-    if (!reasons.length) reasons.push("New around here — say hi");
+    // TODO(messaging): restore "New around here — say hi" once there's an
+    // inbox. Until then it's an instruction with no button behind it, which
+    // reads as a broken product rather than a friendly nudge.
+    if (!reasons.length) reasons.push("New around here — no plans together yet");
 
     return {
       id: person.id,
       name: person.name,
+      image: person.image,
+      social: describeSocial(person.socialUrl),
       age: person.age,
       city: person.city,
       occupation: person.occupation,

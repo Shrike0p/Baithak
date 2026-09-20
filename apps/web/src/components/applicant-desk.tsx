@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Check, ShieldCheck, UsersRound, X } from "lucide-react";
-import { decideApplication, type Applicant, type ApplicantQueue } from "@/lib/api";
+import { decideApplication, type ApplicantQueue } from "@/lib/api";
 import { Avatar } from "@/components/person-card";
+import { SocialBadge } from "@/components/social-badge";
 import { Button, Pill } from "@/components/ui";
+import { useSound } from "@/lib/use-sound";
 
 const BUCKETS = [
   { key: "best", label: "Best matches" },
@@ -28,6 +30,7 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
   const [selectedId, setSelectedId] = useState<string | null>(pending[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [justDecided, setJustDecided] = useState<string | null>(null);
+  const { play } = useSound();
 
   const counts = Object.fromEntries(
     BUCKETS.map((b) => [b.key, pending.filter((a) => a.bucket === b.key).length])
@@ -40,7 +43,12 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
     setBusy(true);
     try {
       await decideApplication(selected.id, status);
-      if (status === "ACCEPTED") setJustDecided(selected.applicant.name);
+      if (status === "ACCEPTED") {
+        setJustDecided(selected.applicant.name);
+        play("cheer");
+      }
+      // Passing stays silent on purpose — a sound on rejecting someone reads as
+      // judgement, and a host working through a queue would be tortured by it.
       const next = pending.find((a) => a.id !== selected.id);
       setSelectedId(next?.id ?? null);
       router.refresh();
@@ -50,12 +58,19 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
   }
 
   return (
-    <div className="grid lg:h-[calc(100vh-13rem)] lg:grid-cols-[290px_minmax(380px,1fr)_300px]">
+    <div className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[290px_minmax(380px,1fr)_300px]">
       {/* Left: the queue */}
-      <aside className="border-b-2 border-foreground p-4 lg:overflow-y-auto lg:border-b-0 lg:border-r-2">
-        <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-4">
+      <aside className="border-b-2 border-foreground p-4 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r-2">
+        {/* Wraps rather than scrolls — in a 290px column a scroll strip hides
+            half the piles, and the scrollbar is hidden so nothing hints at it. */}
+        <div className="flex flex-wrap gap-2 pb-4">
           {BUCKETS.map((b) => (
-            <button key={b.key} onClick={() => setBucket(b.key)} type="button">
+            <button
+              key={b.key}
+              onClick={() => setBucket(b.key)}
+              type="button"
+              className="shrink-0"
+            >
               <Pill tone={bucket === b.key ? "orange" : "plain"}>
                 {b.label} · {counts[b.key]}
               </Pill>
@@ -81,7 +96,7 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Avatar name={a.applicant.name} index={i} size="sm" />
+                  <Avatar name={a.applicant.name} image={a.applicant.image} index={i} size="sm" />
                   <div className="min-w-0">
                     <h3 className="text-base uppercase">{a.applicant.name}</h3>
                     <p className="meta-label">
@@ -99,7 +114,8 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
       </aside>
 
       {/* Centre: the person */}
-      <section className="border-b-2 border-foreground p-5 lg:overflow-y-auto lg:border-b-0 lg:border-r-2 lg:p-8">
+      <section className="flex flex-col border-b-2 border-foreground lg:min-h-0 lg:border-b-0 lg:border-r-2">
+        <div className="flex-1 p-5 lg:min-h-0 lg:overflow-y-auto lg:p-8">
         {!selected ? (
           <div className="py-20 text-center">
             <h2 className="text-3xl uppercase">You&apos;re all caught up.</h2>
@@ -110,7 +126,7 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
         ) : (
           <>
             <div className="flex flex-wrap items-start gap-5">
-              <Avatar name={selected.applicant.name} size="lg" />
+              <Avatar name={selected.applicant.name} image={selected.applicant.image} size="lg" />
               <div>
                 <Pill tone="green">{BRINGING_LABEL[selected.bringingWith]}</Pill>
                 <h2 className="mt-3 text-4xl uppercase">{selected.applicant.name}</h2>
@@ -119,6 +135,11 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                {selected.applicant.social && (
+                  <div className="mt-3">
+                    <SocialBadge social={selected.applicant.social} />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -164,29 +185,33 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
               </div>
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => decide("PASSED")} disabled={busy}>
-                <X /> Pass
-              </Button>
-              <Button variant="outline" onClick={() => decide("REVIEW_LATER")} disabled={busy}>
-                Review later
-              </Button>
-              <Button onClick={() => decide("ACCEPTED")} disabled={busy}>
-                <Check /> Accept
-              </Button>
-            </div>
-
             {justDecided && (
-              <div className="animate-stamp mt-6 inline-block rotate-[-2deg] border-4 border-accent px-6 py-3 font-display text-2xl uppercase text-accent">
+              <div className="animate-stamp mt-8 inline-block -rotate-2 border-4 border-accent px-6 py-3 font-display text-2xl uppercase text-accent">
                 {justDecided}&apos;s in ✓
               </div>
             )}
           </>
         )}
+        </div>
+
+        {/* Pinned: the verdict shouldn't scroll away while you read. */}
+        {selected && (
+          <div className="flex shrink-0 flex-wrap gap-3 border-t-2 border-foreground bg-background p-4 lg:p-5">
+            <Button variant="outline" onClick={() => decide("PASSED")} disabled={busy}>
+              <X /> Pass
+            </Button>
+            <Button variant="outline" onClick={() => decide("REVIEW_LATER")} disabled={busy}>
+              Review later
+            </Button>
+            <Button onClick={() => decide("ACCEPTED")} disabled={busy} className="ml-auto">
+              <Check /> Accept
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* Right: the room you're building */}
-      <aside className="p-5 lg:overflow-y-auto">
+      <aside className="p-5 lg:min-h-0 lg:overflow-y-auto">
         <p className="meta-label text-primary">Your crew</p>
         <h2 className="mt-2 font-display text-4xl">
           {queue.composition.total} / {queue.plan.capacity}
