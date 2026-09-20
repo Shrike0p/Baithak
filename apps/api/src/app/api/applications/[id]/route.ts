@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, type ApplicationStatus } from "@scene/db";
+import { prisma, type ApplicationStatus } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
+import { notify } from "@/lib/notify";
 
 const DECISIONS: ApplicationStatus[] = ["ACCEPTED", "PASSED", "REVIEW_LATER"];
 
@@ -11,7 +12,9 @@ const DECISIONS: ApplicationStatus[] = ["ACCEPTED", "PASSED", "REVIEW_LATER"];
  */
 export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applications/[id]">) {
   const { id } = await ctx.params;
-  const userId = getCurrentUserId(request);
+  const userId = await getCurrentUserId(request);
+  if (!userId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
+
   const body = await request.json();
   const status: ApplicationStatus = body.status;
 
@@ -24,7 +27,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applic
 
   const application = await prisma.application.findUnique({
     where: { id },
-    include: { plan: { select: { id: true, hostId: true, capacity: true } } },
+    include: { plan: { select: { id: true, hostId: true, capacity: true, title: true } } },
   });
 
   if (!application) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -37,6 +40,20 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applic
       where: { id },
       data: { status, decidedAt: status === "REVIEW_LATER" ? null : new Date() },
     });
+
+    // "Review later" isn't a decision, so it isn't news.
+    if (status === "PASSED") {
+      notify({
+        userId: application.applicantId,
+        kind: "APPLICATION_DECLINED",
+        title: `Not this time — ${application.plan.title}`,
+        body: "The host went with a different mix. It's rarely about you.",
+        href: "/discover",
+        planId: application.planId,
+        actorId: userId,
+      });
+    }
+
     return NextResponse.json(updated);
   }
 
@@ -77,6 +94,16 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applic
       },
     }),
   ]);
+
+  notify({
+    userId: application.applicantId,
+    kind: "APPLICATION_ACCEPTED",
+    title: `You're in — ${application.plan.title}`,
+    body: "The party room is open. Meet the crew before the night.",
+    href: `/plans/${application.planId}/room`,
+    planId: application.planId,
+    actorId: userId,
+  });
 
   return NextResponse.json(updated);
 }
