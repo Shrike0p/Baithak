@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@scene/db";
+import { prisma } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
 import { composeCrew } from "@/lib/composition";
 
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[id]/room">) {
   const { id } = await ctx.params;
-  const userId = getCurrentUserId(request);
+  const userId = await getCurrentUserId(request);
+  if (!userId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
+
 
   const plan = await prisma.plan.findUnique({
     where: { id },
     include: {
-      host: { select: { id: true, name: true, bio: true, trustScore: true } },
+      host: { select: { id: true, name: true, image: true, bio: true, trustScore: true } },
       attendees: {
         where: { status: "CONFIRMED" },
         include: {
@@ -18,6 +20,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
             select: {
               id: true,
               name: true,
+              image: true,
               age: true,
               city: true,
               occupation: true,
@@ -80,12 +83,20 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
         sharedVibes: a.user.vibeTags.filter((t) => myVibes.includes(t)),
       },
     })),
+    // Computed here so the page doesn't read the clock while rendering.
+    hasStarted: plan.startsAt.getTime() <= Date.now(),
+    isToday: plan.startsAt.toDateString() === new Date().toDateString(),
     memories: plan.photos.map((p) => ({
       id: p.id,
       url: p.url,
       caption: p.caption,
       takenAt: p.takenAt,
       uploader: p.uploader.name,
+      // Deletable by the person who shared it, or by whoever's party it is.
+      canDelete: p.uploaderId === userId || plan.hostId === userId,
+      isPublic: p.isPublic,
+      // Publishing is the host's call, and only over their own photos.
+      canPublish: plan.hostId === userId && p.uploaderId === userId,
     })),
     previousNights: previousNights.map((p) => ({
       id: p.id,

@@ -8,18 +8,33 @@ import {
   ShieldCheck,
   UsersRound,
 } from "lucide-react";
-import { getPartyRoom, type PartyRoom } from "@/lib/api";
+import {
+  getPartyRoom,
+  getMyReview,
+  getMessages,
+  type ChatMessage,
+  type PartyRoom,
+  type PlanReview,
+} from "@/lib/api";
 import { Avatar } from "@/components/person-card";
 import { Countdown } from "@/components/countdown";
 import { Button, Pill, PaperCard, SectionTitle } from "@/components/ui";
+import { MemoryGallery } from "@/components/memory-gallery";
+import { ReviewNight } from "@/components/review-night";
+import { PartyChat } from "@/components/party-chat";
 
 const TABS = [
+  { key: "chat", label: "Chat" },
   { key: "people", label: "People" },
   { key: "today", label: "Today" },
   { key: "memories", label: "Memories" },
+  { key: "review", label: "Review" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+
+// Nothing in a shoebox of photos lies flat.
+const TILTS = ["rotate-[-2deg]", "rotate-2", "rotate-[-1deg]", "rotate-1"];
 
 function formatTime(iso: string) {
   return new Date(iso)
@@ -46,7 +61,7 @@ function PeopleTab({ room }: { room: PartyRoom }) {
           {room.crew.map((member, i) => (
             <div key={member.user.id} className="paper-card p-4">
               <div className="flex gap-4">
-                <Avatar name={member.user.name} index={i} />
+                <Avatar name={member.user.name} image={member.user.image} index={i} />
                 <div className="min-w-0">
                   <h3 className="text-lg uppercase">
                     {member.user.name}
@@ -99,7 +114,7 @@ function PeopleTab({ room }: { room: PartyRoom }) {
                 key={m.user.id}
                 className="grid gap-4 p-5 md:grid-cols-[auto_1fr_auto] md:items-center"
               >
-                <Avatar name={m.user.name} index={i} size="lg" />
+                <Avatar name={m.user.name} image={m.user.image} index={i} size="lg" />
                 <div>
                   <h3 className="text-2xl uppercase">
                     You + {m.user.name}
@@ -120,8 +135,7 @@ function PeopleTab({ room }: { room: PartyRoom }) {
 }
 
 function TodayTab({ room }: { room: PartyRoom }) {
-  const isToday = new Date(room.startsAt).toDateString() === new Date().toDateString();
-  const isPast = new Date(room.startsAt).getTime() < Date.now();
+  const { isToday, hasStarted: isPast } = room;
 
   return (
     <div>
@@ -179,8 +193,6 @@ function TodayTab({ room }: { room: PartyRoom }) {
 }
 
 function MemoriesTab({ room }: { room: PartyRoom }) {
-  const tilts = ["rotate-[-2deg]", "rotate-2", "rotate-[-1deg]", "rotate-1"];
-
   return (
     <div className="space-y-12">
       <section>
@@ -193,37 +205,7 @@ function MemoriesTab({ room }: { room: PartyRoom }) {
           title={room.memories.length > 0 ? "Last night" : "No memories yet"}
         />
 
-        {room.memories.length === 0 ? (
-          <PaperCard className="p-10 text-center">
-            <h3 className="text-2xl uppercase">Nothing here yet.</h3>
-            <p className="mt-2 text-muted-foreground">
-              Photos from the night land here afterwards — just for the people who were there.
-            </p>
-          </PaperCard>
-        ) : (
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {room.memories.map((photo, i) => (
-              <figure
-                key={photo.id}
-                className={`${tilts[i % tilts.length]} border-2 border-foreground bg-paper p-3 shadow-stamp transition-transform duration-200 hover:rotate-0`}
-              >
-                <Image
-                  src={photo.url}
-                  alt={photo.caption ?? "Party photo"}
-                  width={800}
-                  height={600}
-                  className="aspect-[4/3] w-full object-cover"
-                />
-                <figcaption className="mt-3">
-                  <p className="font-bold">{photo.caption}</p>
-                  <p className="meta-label mt-1 text-muted-foreground">
-                    {photo.takenAt ? formatTime(photo.takenAt) : ""} · {photo.uploader}
-                  </p>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        )}
+        <MemoryGallery planId={room.id} memories={room.memories} />
       </section>
 
       {room.previousNights.length > 0 && (
@@ -237,7 +219,7 @@ function MemoriesTab({ room }: { room: PartyRoom }) {
               <Link
                 key={night.id}
                 href={`/plans/${night.id}`}
-                className={`${tilts[i % tilts.length]} min-w-[280px] border-2 border-foreground bg-paper p-3 shadow-stamp transition-transform duration-200 hover:rotate-0`}
+                className={`${TILTS[i % TILTS.length]} min-w-[280px] border-2 border-foreground bg-paper p-3 shadow-stamp transition-transform duration-200 hover:rotate-0`}
               >
                 <Image
                   src={night.imageUrl ?? "/assets/house-party.jpg"}
@@ -259,6 +241,40 @@ function MemoriesTab({ room }: { room: PartyRoom }) {
   );
 }
 
+function ReviewTab({ room, review }: { room: PartyRoom; review: PlanReview | null }) {
+  if (room.isHost) {
+    return (
+      <PaperCard className="p-10 text-center">
+        <h3 className="text-2xl uppercase">This one&apos;s not yours to rate.</h3>
+        <p className="mt-2 text-muted-foreground">
+          Your guests rate the night — that&apos;s what builds your history.
+        </p>
+      </PaperCard>
+    );
+  }
+
+  if (!room.hasStarted) {
+    return (
+      <PaperCard className="p-10 text-center">
+        <h3 className="text-2xl uppercase">Not yet.</h3>
+        <p className="mt-2 text-muted-foreground">
+          Come back after the night and tell us how it went.
+        </p>
+      </PaperCard>
+    );
+  }
+
+  return (
+    <div>
+      <SectionTitle
+        kicker={review ? "You already rated this — you can change it" : "Two minutes, and it counts"}
+        title="How was it?"
+      />
+      <ReviewNight room={room} existing={review} />
+    </div>
+  );
+}
+
 export default async function PartyRoomPage({
   params,
   searchParams,
@@ -268,7 +284,14 @@ export default async function PartyRoomPage({
   const room = await getPartyRoom(id).catch(() => null);
   if (!room) notFound();
 
-  const active: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "people";
+  const active: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "chat";
+
+  // Both are fetched only for the tab that needs them — nobody reviews a party
+  // that hasn't run, and the other tabs don't need the message history.
+  const [review, messages] = await Promise.all([
+    room.hasStarted && !room.isHost ? getMyReview(id).catch(() => null) : null,
+    active === "chat" ? getMessages(id).catch(() => [] as ChatMessage[]) : [],
+  ]);
 
   return (
     <div className="pb-24">
@@ -283,7 +306,7 @@ export default async function PartyRoomPage({
           </div>
           <div className="border-2 border-foreground bg-background px-5 py-3 text-center text-foreground shadow-stamp">
             <span className="meta-label">
-              {new Date(room.startsAt).getTime() < Date.now() ? "Happened" : "Countdown"}
+              {room.hasStarted ? "Happened" : "Countdown"}
             </span>
             <Countdown startsAt={room.startsAt} />
           </div>
@@ -309,7 +332,17 @@ export default async function PartyRoomPage({
       <div className="mx-auto max-w-6xl px-5 py-10 md:px-8">
         {active === "people" && <PeopleTab room={room} />}
         {active === "today" && <TodayTab room={room} />}
+        {active === "chat" && (
+          <div>
+            <SectionTitle
+              kicker="Everyone who's coming, before the night"
+              title="The group chat"
+            />
+            <PartyChat planId={room.id} initial={messages} />
+          </div>
+        )}
         {active === "memories" && <MemoriesTab room={room} />}
+        {active === "review" && <ReviewTab room={room} review={review} />}
       </div>
     </div>
   );
