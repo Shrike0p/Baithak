@@ -1,4 +1,4 @@
-import type { Gender, CrowdPreference } from "@scene/db";
+import type { Gender, CrowdPreference } from "@baithak/db";
 
 type Member = { firstTime: boolean; user: { gender: Gender | null } };
 
