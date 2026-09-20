@@ -3,7 +3,7 @@ import { prisma } from "../src/index";
 import type { PlanCategory } from "@prisma/client";
 
 // Every seeded user signs in with this — handy for testing multi-user flows.
-const SEED_PASSWORD = "scene1234";
+const SEED_PASSWORD = "baithak1234";
 
 /**
  * Trust is earned, so the seed doesn't hand it out. Everyone starts at the

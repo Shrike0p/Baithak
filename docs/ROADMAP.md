@@ -151,7 +151,7 @@ sessions get their own data, non-hosts still 403, and `trustScore`/`id` cannot b
 set by the client.
 
 Seeded users have real credential accounts — sign in as `ananya@seed.local` (or any
-seeded name) with `scene1234`.
+seeded name) with `baithak1234`.
 
 ---
 

@@ -28,7 +28,7 @@ Requires Node 20+, pnpm, and a local PostgreSQL.
 
 ```bash
 brew services start postgresql@17     # or your own Postgres
-createdb scene
+createdb baithak
 
 pnpm install
 cp apps/web/.env.local.example apps/web/.env.local
@@ -42,7 +42,7 @@ pnpm dev                              # both apps in parallel
 - Web: http://localhost:3000
 - API: http://localhost:3001 (health check at `/api/health`)
 
-`DATABASE_URL` lives in `packages/db/.env` and `apps/api/.env.local` — both default to a local `scene` database.
+`DATABASE_URL` lives in `packages/db/.env` and `apps/api/.env.local` — both default to a local `baithak` database.
 
 ## Common commands
 
@@ -66,7 +66,7 @@ creates real accounts — sign in as any seeded user:
 ```
 ananya@seed.local   (hosts a plan with 6 people waiting)
 prakhar@seed.local  sara@seed.local  rahul@seed.local  …
-password: scene1234
+password: baithak1234
 ```
 
 Set `BETTER_AUTH_SECRET` in `packages/db/.env`, `apps/web/.env.local` and

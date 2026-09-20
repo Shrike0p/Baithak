@@ -20,7 +20,7 @@ Turborepo + pnpm workspace monorepo for **Baithak**. Two Next.js 16 apps share c
 
 **No real auth yet.** There's no Clerk/session wiring — `apps/api` reads an `x-user-id` header (`getCurrentUserId` in `apps/api/src/lib/current-user.ts`, defaults to a seeded user) to know "who's asking," and `apps/web`'s `CURRENT_USER_ID` constant in `src/lib/api.ts` sends that header on every request. This is a deliberate placeholder — replace both with real Clerk session data when auth is wired up, don't build more features on top of assuming it'll always be this seeded id.
 
-**Local Postgres, not Neon yet.** `packages/db/.env` and `apps/api/.env.local` both point at a local `scene` database (`postgresql://<user>@localhost:5432/scene`) via Homebrew's `postgresql@17` service. Swapping to Neon later is just changing `DATABASE_URL` in both places — no code change.
+**Local Postgres, not Neon yet.** `packages/db/.env` and `apps/api/.env.local` both point at a local `baithak` database (`postgresql://<user>@localhost:5432/baithak`) via Homebrew's `postgresql@17` service. Swapping to Neon later is just changing `DATABASE_URL` in both places — no code change.
 
 `apps/api` is deliberately a separate app rather than API routes bolted onto `apps/web`, so the backend can be deployed, scaled, and reasoned about independently. When adding a new backend endpoint, it goes in `apps/api/src/app/api/**/route.ts`, not in `apps/web`.
 
@@ -29,7 +29,7 @@ Turborepo + pnpm workspace monorepo for **Baithak**. Two Next.js 16 apps share c
 Run from the repo root (pnpm workspace + turbo drive everything; don't `cd` into an app to run its scripts individually except for one-off ad hoc commands):
 
 ```bash
-brew services start postgresql@17           # local DB must be running (createdb scene if it doesn't exist yet)
+brew services start postgresql@17           # local DB must be running (createdb baithak if it doesn't exist yet)
 pnpm install                                 # install all workspace deps
 pnpm --filter @baithak/db db:migrate           # apply Prisma migrations (packages/db/prisma/migrations)
 pnpm --filter @baithak/db db:seed              # seed a couple of fake users/plans
