@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { applyToPlan } from "@/lib/api";
+import { applyToPlan, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui";
+import { useSound } from "@/lib/use-sound";
+import { CompleteProfileStep } from "@/components/complete-profile-step";
 
 const BRINGING_OPTIONS = [
   { value: "SOLO", label: "Solo" },
@@ -17,16 +19,32 @@ export function RequestToJoin({ planId }: { planId: string }) {
   const [bringingWith, setBringingWith] = useState<Bringing>("SOLO");
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [missing, setMissing] = useState<string[] | null>(null);
+  const { play } = useSound();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit() {
     setStatus("sending");
     try {
       await applyToPlan(planId, { bringingWith, note: note || undefined });
       setStatus("sent");
-    } catch {
+      setMissing(null);
+      play("stamp");
+    } catch (err) {
+      // 422 means the profile is too thin for a host to judge — ask for the
+      // missing pieces here rather than letting a doomed request through.
+      const incomplete = err instanceof ApiError && err.status === 422;
+      if (incomplete) {
+        setMissing((err.body?.missing as string[]) ?? ["basics", "vibe"]);
+        setStatus("idle");
+        return;
+      }
       setStatus("error");
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await submit();
   }
 
   if (status === "sent") {
@@ -43,6 +61,10 @@ export function RequestToJoin({ planId }: { planId: string }) {
         </p>
       </div>
     );
+  }
+
+  if (missing) {
+    return <CompleteProfileStep missing={missing} onDone={submit} />;
   }
 
   return (

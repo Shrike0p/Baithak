@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { ChevronRight, LockKeyhole } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronRight, ImagePlus, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 import { createPlan } from "@/lib/api";
+import { uploadImage } from "@/lib/upload";
 import { COVER_PRESETS } from "@/lib/plan-art";
 import { Button, Pill } from "@/components/ui";
 
@@ -69,6 +70,11 @@ export default function MakeAPlanPage() {
   const [targetMen, setTargetMen] = useState(6);
   const [connectionPreference, setConnectionPreference] = useState("OPEN");
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
+  // Held until the plan exists: a cover is stored under covers/<planId>/, and
+  // there's no planId until the plan is created.
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
 
   const toggleVibe = (v: string) =>
     setVibeTags((tags) => (tags.includes(v) ? tags.filter((t) => t !== v) : [...tags, v]));
@@ -90,6 +96,22 @@ export default function MakeAPlanPage() {
         imageUrl,
         crowd: { ageMin, ageMax, targetWomen, targetMen, connectionPreference, preferredVibes: vibeTags },
       });
+      // Upload after creation, then attach. A failed upload shouldn't lose the
+      // plan someone just filled in a form to make — they land on it either
+      // way and can set the cover from there.
+      if (coverFile) {
+        try {
+          const { objectKey } = await uploadImage(coverFile, "cover", plan.id);
+          await fetch(`/api/plans/${plan.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ objectKey }),
+          });
+        } catch {
+          // Falls back to the preset they picked.
+        }
+      }
+
       router.push(`/plans/${plan.id}`);
     } catch {
       setStatus("error");
@@ -199,8 +221,57 @@ export default function MakeAPlanPage() {
               </button>
             ))}
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={() => coverInput.current?.click()}
+              className="inline-flex h-11 items-center gap-2 border-2 border-foreground bg-card px-4 font-bold uppercase shadow-stamp-sm transition-transform active:translate-x-0.5 active:translate-y-0.5"
+            >
+              <ImagePlus className="size-4" />
+              {coverFile ? "Change photo" : "Use your own photo"}
+            </button>
+
+            {coverPreview && (
+              <div className="flex items-center gap-3">
+                <Image
+                  src={coverPreview}
+                  alt="Your cover"
+                  width={120}
+                  height={90}
+                  unoptimized
+                  className="h-14 w-20 border-2 border-foreground object-cover shadow-stamp-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCoverFile(null);
+                    setCoverPreview(null);
+                    if (coverInput.current) coverInput.current.value = "";
+                  }}
+                  className="font-mono text-xs font-bold uppercase text-muted-foreground hover:text-foreground"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+
+            <input
+              ref={coverInput}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setCoverFile(file);
+                setCoverPreview(file ? URL.createObjectURL(file) : null);
+              }}
+            />
+          </div>
+
           <p className="mt-3 text-xs text-muted-foreground">
-            Uploading your own photo lands once we wire up file storage.
+            {coverFile
+              ? "Your photo replaces the preset once the plan is created."
+              : "Your own photo beats a preset — people can tell."}
           </p>
         </Field>
 

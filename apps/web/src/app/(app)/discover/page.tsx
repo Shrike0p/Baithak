@@ -1,12 +1,19 @@
 import Link from "next/link";
-import { getPlans, getPeople } from "@/lib/api";
-import { PlanCard } from "@/components/plan-card";
+import { getPlans, getPeople, getHappenedPlans } from "@/lib/api";
 import { Avatar } from "@/components/person-card";
-import { Pill, PaperCard, SectionTitle } from "@/components/ui";
+import { PaperCard, SectionTitle } from "@/components/ui";
+import { HappenedStrip } from "@/components/happened-strip";
+import { PlanFilters } from "@/components/plan-filters";
 
 export default async function DiscoverPage() {
-  const [plans, { met, suggested }] = await Promise.all([getPlans(), getPeople()]);
-  const yourPeople = [...met, ...suggested].slice(0, 6);
+  // Plans are public; the people strip needs a session. Signed out, we simply
+  // show fewer sections rather than failing the page.
+  const [plans, people, happened] = await Promise.all([
+    getPlans(),
+    getPeople().catch(() => null),
+    getHappenedPlans().catch(() => []),
+  ]);
+  const yourPeople = people ? [...people.met, ...people.suggested].slice(0, 6) : [];
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
@@ -23,11 +30,6 @@ export default async function DiscoverPage() {
             Find something. Find your people.
           </p>
         </div>
-        <div className="mt-5 flex gap-2 md:mt-0">
-          <Pill tone="orange">Tonight</Pill>
-          <Pill>This weekend</Pill>
-          <Pill>Near me</Pill>
-        </div>
       </div>
 
       {plans.length === 0 ? (
@@ -39,21 +41,7 @@ export default async function DiscoverPage() {
         </PaperCard>
       ) : (
         <>
-          <section>
-            <SectionTitle kicker="Happening soon" title="Tonight" />
-            <PlanCard plan={plans[0]} large />
-          </section>
-
-          {plans.length > 1 && (
-            <section className="mt-14">
-              <SectionTitle kicker="Clear your calendar" title="This weekend" />
-              <div className="grid gap-7 md:grid-cols-3">
-                {plans.slice(1).map((plan) => (
-                  <PlanCard key={plan.id} plan={plan} />
-                ))}
-              </div>
-            </section>
-          )}
+          <PlanFilters plans={plans} />
 
           {yourPeople.length > 0 && (
             <section className="mt-14 border-y-2 border-foreground bg-card px-5 py-7">
@@ -67,10 +55,10 @@ export default async function DiscoverPage() {
                 {yourPeople.map((person, i) => (
                   <Link
                     key={person.id}
-                    href="/people"
+                    href={`/people/${person.id}`}
                     className="flex min-w-32 flex-col items-center gap-2"
                   >
-                    <Avatar name={person.name} index={i} />
+                    <Avatar name={person.name} image={person.image} index={i} />
                     <strong>{person.name}</strong>
                     <span className="meta-label text-muted-foreground">
                       {person.sharedPlans > 0
@@ -107,7 +95,7 @@ export default async function DiscoverPage() {
                 <div className="space-y-3">
                   {yourPeople.slice(0, 2).map((person, i) => (
                     <div key={person.id} className="paper-card flex items-center gap-4 p-4">
-                      <Avatar name={person.name} index={i} />
+                      <Avatar name={person.name} image={person.image} index={i} />
                       <div className="min-w-0">
                         <h3 className="text-lg uppercase">{person.name}</h3>
                         <p className="text-sm">{person.reasons[0]}</p>
@@ -123,6 +111,10 @@ export default async function DiscoverPage() {
           </section>
         </>
       )}
+
+      <div className="mt-14">
+        <HappenedStrip plans={happened} />
+      </div>
     </div>
   );
 }

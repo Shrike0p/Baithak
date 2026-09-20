@@ -4,20 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
-  Bell,
   CalendarDays,
-  CircleUserRound,
   Compass,
   MapPin,
   Menu,
   Plus,
-  Search,
-  Settings,
   Sparkles,
   UsersRound,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/ui";
+import { AccountMenu } from "@/components/account-menu";
+import { NotificationBell } from "@/components/notification-bell";
+import type { Me } from "@/lib/api";
 
 const NAV = [
   { href: "/discover", label: "Discover", icon: Compass },
@@ -25,7 +24,16 @@ const NAV = [
   { href: "/people", label: "People", icon: UsersRound },
 ];
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  me,
+  unread = 0,
+}: {
+  children: ReactNode;
+  me: Me | null;
+  /** Real count — the dot used to be hardcoded, so it was always lit. */
+  unread?: number;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -38,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         }`}
       >
         <div className="mb-10 flex items-center justify-between">
-          <Logo />
+          <Logo href="/discover" />
           <button
             className="md:hidden"
             aria-label="Close menu"
@@ -86,19 +94,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Sparkles className="size-5" /> Host desk
         </Link>
 
-        <div className="mt-auto space-y-1 border-t-2 border-foreground pt-4">
-          <Link
-            href="/profile"
-            className="flex w-full items-center gap-3 px-3 py-2 font-bold hover:bg-card"
-          >
-            <CircleUserRound className="size-5" /> Your profile
-          </Link>
-          <Link
-            href="/settings"
-            className="flex w-full items-center gap-3 px-3 py-2 font-bold hover:bg-card"
-          >
-            <Settings className="size-5" /> Settings &amp; safety
-          </Link>
+        <div className="mt-auto border-t-2 border-foreground pt-4">
+          {me ? (
+            <AccountMenu name={me.name} email={me.email} image={me.image} strength={me.strength} />
+          ) : (
+            <Link
+              href="/sign-up"
+              className="inline-flex h-11 w-full items-center justify-center rounded-sm border-2 border-foreground bg-primary font-bold uppercase text-primary-foreground shadow-stamp-sm"
+            >
+              Join Baithak
+            </Link>
+          )}
         </div>
       </aside>
 
@@ -109,24 +115,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <div className="hidden items-center gap-2 md:flex">
             <MapPin className="size-4 text-primary" />
-            <span className="meta-label">Bangalore · Your scene</span>
+            <span className="meta-label">Bangalore · Your people</span>
           </div>
           <Logo compact href="/discover" />
           <div className="flex gap-2">
-            <button
-              aria-label="Search"
-              className="flex size-9 items-center justify-center border-2 border-foreground bg-card"
-            >
-              <Search className="size-4" />
-            </button>
-            <Link
-              href="/notifications"
-              aria-label="Notifications"
-              className="relative flex size-9 items-center justify-center border-2 border-foreground bg-card"
-            >
-              <Bell className="size-4" />
-              <span className="absolute -right-1 -top-1 size-3 rounded-full border border-foreground bg-primary" />
-            </Link>
+            <NotificationBell unread={unread} />
           </div>
         </header>
 

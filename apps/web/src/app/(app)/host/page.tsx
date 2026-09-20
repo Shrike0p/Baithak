@@ -38,8 +38,11 @@ export default async function HostDeskPage({ searchParams }: PageProps<"/host">)
       .length ?? 0;
 
   return (
-    <div>
-      <div className="border-b-2 border-foreground px-5 py-7 md:px-8">
+    // On desktop the desk is a fixed-height workspace: only the panes scroll,
+    // never the page. 4rem is the app shell's sticky header. Below lg it just
+    // flows normally.
+    <div className="lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col">
+      <div className="border-b-2 border-foreground px-5 py-7 md:px-8 lg:shrink-0">
         <p className="meta-label text-primary">
           {queue?.plan.title} · {queue?.plan.neighborhood}
         </p>
@@ -51,7 +54,7 @@ export default async function HostDeskPage({ searchParams }: PageProps<"/host">)
         </p>
 
         {hosting.length > 1 && (
-          <div className="hide-scrollbar mt-5 flex gap-2 overflow-x-auto">
+          <div className="mt-5 flex flex-wrap gap-2">
             {hosting.map((p) => (
               <Link key={p.id} href={`/host?plan=${p.id}`}>
                 <Pill tone={p.id === selectedId ? "orange" : "plain"}>

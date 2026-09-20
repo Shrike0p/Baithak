@@ -42,7 +42,7 @@ function PlanGroup({
 }
 
 export default async function PlansPage() {
-  const { hosting, going, requested } = await getMyPlans();
+  const { hosting, going, requested, past } = await getMyPlans();
   const total = hosting.length + going.length + requested.length;
 
   return (
@@ -100,6 +100,18 @@ export default async function PlansPage() {
           }}
         />
       </div>
+
+      {past.length > 0 && (
+        <div className="mt-14">
+          <PlanGroup
+            kicker="Nights that already happened"
+            title="Your history"
+            plans={past}
+            roomLink
+            empty={{ heading: "Nothing behind you yet.", body: "" }}
+          />
+        </div>
+      )}
 
       <div className="mt-14 flex flex-wrap items-center justify-between gap-4 border-2 border-foreground bg-secondary p-7 text-secondary-foreground shadow-stamp">
         <div>
