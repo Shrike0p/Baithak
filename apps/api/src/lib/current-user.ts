@@ -1,8 +1,14 @@
 import type { NextRequest } from "next/server";
+import { auth } from "@baithak/auth";
 
-// ponytail: no real auth yet — reads a header the frontend sets, defaulting
-// to a seeded user, so Request to Join / address reveal have someone to act
-// as. Swap for Clerk's session user id when auth is wired up.
-export function getCurrentUserId(request: NextRequest): string {
-  return request.headers.get("x-user-id") ?? "user_seed_ananya";
+/**
+ * The signed-in user, resolved from the Better Auth session cookie the browser
+ * sends (directly, or forwarded by apps/web when rendering on the server).
+ *
+ * Returns null when there's no valid session — callers must treat that as
+ * unauthenticated rather than falling back to a default user.
+ */
+export async function getCurrentUserId(request: NextRequest): Promise<string | null> {
+  const session = await auth.api.getSession({ headers: request.headers });
+  return session?.user.id ?? null;
 }
