@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, type PlanCategory, type ConnectionPreference } from "@scene/db";
+import { prisma, type PlanCategory, type ConnectionPreference } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
+import { hiddenUserIds } from "@/lib/blocks";
 
 const CONNECTION_PREFS: ConnectionPreference[] = [
   "FRIENDS_OF_FRIENDS",
@@ -27,7 +28,9 @@ const CATEGORIES: PlanCategory[] = [
 ];
 
 export async function POST(request: NextRequest) {
-  const hostId = getCurrentUserId(request);
+  const hostId = await getCurrentUserId(request);
+  if (!hostId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
+
   const body = await request.json();
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -44,6 +47,14 @@ export async function POST(request: NextRequest) {
   }
   if (Number.isNaN(startsAt.getTime())) {
     return NextResponse.json({ error: "startsAt must be a valid date" }, { status: 400 });
+  }
+  // A plan in the past can never appear in Discover, so creating one just
+  // produces a party nobody can find.
+  if (startsAt.getTime() < Date.now()) {
+    return NextResponse.json(
+      { error: "that time has already passed — pick when it's actually happening" },
+      { status: 400 },
+    );
   }
   if (!Number.isInteger(capacity) || capacity < 2 || capacity > 100) {
     return NextResponse.json({ error: "capacity must be between 2 and 100" }, { status: 400 });
@@ -85,12 +96,21 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(plan, { status: 201 });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const userId = await getCurrentUserId(request);
+  const hidden = await hiddenUserIds(userId);
+
   const plans = await prisma.plan.findMany({
-    where: { status: "OPEN" },
+    // A party that has already started isn't something you can join, whether or
+    // not the host got round to wrapping it up. Discover shows what's ahead.
+    where: {
+      status: "OPEN",
+      startsAt: { gte: new Date() },
+      ...(hidden.length ? { hostId: { notIn: hidden } } : {}),
+    },
     orderBy: { startsAt: "asc" },
     include: {
-      host: { select: { id: true, name: true, trustScore: true } },
+      host: { select: { id: true, name: true, image: true, trustScore: true } },
       _count: { select: { attendees: true } },
     },
   });
