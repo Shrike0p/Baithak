@@ -27,3 +27,4 @@ npm-debug.log*
 # skills-lock.json (which IS tracked), so no need to commit the copies
 .agents/
 .claude/
+.env*

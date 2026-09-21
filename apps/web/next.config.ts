@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:3001";
+// Rewrites are baked into a static manifest at BUILD time, so this has to
+// resolve during the build — not at runtime. A Vercel env var that the build
+// can't see falls through to the localhost default and every /api/* request
+// then fails with DNS_HOSTNAME_RESOLVED_PRIVATE. VERCEL_ENV is always present
+// during a Vercel build, so it's the reliable signal for "not local".
+const API_ORIGIN =
+  process.env.API_ORIGIN ??
+  (process.env.VERCEL_ENV ? "https://api.baithak.buzz" : "http://localhost:3001");
 
 const nextConfig: NextConfig = {
   images: {
