@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { GoogleButton, OrDivider } from "@/components/google-button";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signIn } from "@/lib/auth-client";
 import { useSound } from "@/lib/use-sound";
@@ -20,7 +19,6 @@ export function SignInForm({
   /** Real activity, passed in from the server. Never invented. */
   stat?: string;
 }) {
-  const router = useRouter();
   const { play } = useSound();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,8 +42,8 @@ export function SignInForm({
 
     // Give the clip a beat to start; the redirect would otherwise cut it off.
     await Promise.race([play("wow"), new Promise((r) => setTimeout(r, 300))]);
-    router.push(next ?? "/discover");
-    router.refresh();
+    // See sign-up-form: push + refresh races and renders a blank page.
+    window.location.href = next ?? "/discover";
   }
 
   return (

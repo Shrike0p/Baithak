@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { Button, Pill } from "@/components/ui";
@@ -24,7 +23,6 @@ const GENDERS = [
 ];
 
 export function OnboardingFlow({ next }: { next?: string }) {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [picked, setPicked] = useState<string[]>([]);
   const [age, setAge] = useState("");
@@ -69,8 +67,9 @@ export function OnboardingFlow({ next }: { next?: string }) {
       return;
     }
     play("cheer");
-    router.push(next ?? "/discover");
-    router.refresh();
+    // Hard navigation: push + refresh races the in-flight RSC fetch and lands
+    // on a blank page. The layout also re-checks onboardedAt on this request.
+    window.location.href = next ?? "/discover";
   }
 
   return (

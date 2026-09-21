@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { GoogleButton, OrDivider } from "@/components/google-button";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signUp } from "@/lib/auth-client";
 import { useSound } from "@/lib/use-sound";
@@ -20,7 +19,6 @@ export function SignUpForm({
   /** Real activity, passed in from the server. Never invented. */
   stat?: string;
 }) {
-  const router = useRouter();
   const { play } = useSound();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -47,8 +45,10 @@ export function SignUpForm({
 
     // New accounts have no vibe tags yet, so recommendations can't work until
     // they've been through onboarding.
-    router.push(next ? `/onboarding?next=${encodeURIComponent(next)}` : "/onboarding");
-    router.refresh();
+    // A full navigation, not router.push + refresh: the refresh invalidates the
+    // router cache while the push's RSC fetch is still in flight, and the page
+    // renders blank. A hard load also guarantees the new session cookie is sent.
+    window.location.href = next ? `/onboarding?next=${encodeURIComponent(next)}` : "/onboarding";
   }
 
   return (
