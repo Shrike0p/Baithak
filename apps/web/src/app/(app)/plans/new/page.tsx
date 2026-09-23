@@ -103,7 +103,10 @@ export default function MakeAPlanPage() {
   const toggleVibe = (v: string) =>
     setVibeTags((tags) => (tags.includes(v) ? tags.filter((t) => t !== v) : [...tags, v]));
 
-  const canSubmit = title.trim() && neighborhood.trim() && startsAt && status !== "saving";
+  // Same rule the API enforces, surfaced before they hit save.
+  const mixOverflows = targetWomen + targetMen > capacity;
+  const canSubmit =
+    title.trim() && neighborhood.trim() && startsAt && !mixOverflows && status !== "saving";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -339,14 +342,19 @@ export default function MakeAPlanPage() {
           </div>
 
           <div>
-            <p className="meta-label text-muted-foreground">Group mix target</p>
+            <p className="meta-label text-muted-foreground">
+              Group mix target{" "}
+              <span className={mixOverflows ? "text-primary" : "text-muted-foreground"}>
+                ({targetWomen + targetMen} of {capacity})
+              </span>
+            </p>
             <div className="mt-2 flex items-center gap-3">
               <label className="flex items-center gap-2 font-bold">
                 <span aria-hidden>&#9792;</span>
                 <input
                   type="number"
                   min={0}
-                  max={capacity}
+                  max={Math.max(0, capacity - targetMen)}
                   value={targetWomen}
                   onChange={(e) => setTargetWomen(Number(e.target.value))}
                   aria-label="Target women"
@@ -358,7 +366,7 @@ export default function MakeAPlanPage() {
                 <input
                   type="number"
                   min={0}
-                  max={capacity}
+                  max={Math.max(0, capacity - targetWomen)}
                   value={targetMen}
                   onChange={(e) => setTargetMen(Number(e.target.value))}
                   aria-label="Target men"

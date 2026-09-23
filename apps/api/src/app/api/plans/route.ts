@@ -59,6 +59,16 @@ export async function POST(request: NextRequest) {
   if (!Number.isInteger(capacity) || capacity < 2 || capacity > 100) {
     return NextResponse.json({ error: "capacity must be between 2 and 100" }, { status: 400 });
   }
+  // The mix is a target for the same room, not a second guest list — 12 women
+  // and 12 men at a party of 12 is a target nobody can ever hit.
+  const targetWomen = num(body.crowd?.targetWomen) ?? 0;
+  const targetMen = num(body.crowd?.targetMen) ?? 0;
+  if (targetWomen + targetMen > capacity) {
+    return NextResponse.json(
+      { error: `that mix adds up to ${targetWomen + targetMen}, more than the ${capacity} spots` },
+      { status: 400 },
+    );
+  }
 
   const plan = await prisma.plan.create({
     data: {
