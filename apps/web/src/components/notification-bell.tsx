@@ -61,12 +61,22 @@ export function NotificationBell({ unread }: { unread: number }) {
     let live = true;
     fetch("/api/notifications")
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => live && setItems(d.items ?? []))
+      .then((d) => {
+        if (!live) return;
+        setItems(d.items ?? []);
+        // Opening the panel IS reading them — the badge stayed lit otherwise.
+        if ((d.items ?? []).some((n: { readAt: string | null }) => !n.readAt)) {
+          void fetch("/api/notifications", { method: "PATCH" }).then(() => {
+            setItems((prev) => prev?.map((n) => ({ ...n, readAt: new Date().toISOString() })) ?? null);
+            router.refresh();
+          });
+        }
+      })
       .catch(() => live && setItems([]));
     return () => {
       live = false;
     };
-  }, [open, items]);
+  }, [open, items, router]);
 
   async function markAllRead() {
     await fetch("/api/notifications", { method: "PATCH" });

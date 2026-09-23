@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, UserX } from "lucide-react";
+import { Flag } from "lucide-react";
 
 const REASONS = [
   { value: "HARASSMENT", label: "Harassment" },
@@ -13,29 +13,18 @@ const REASONS = [
 ];
 
 /** Blocking and reporting a person, from their own profile. */
-export function PersonSafety({ userId, name }: { userId: string; name: string }) {
+export function PersonSafety({ userId }: { userId: string; name?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState(REASONS[0].value);
   const [detail, setDetail] = useState("");
-  const [alsoBlock, setAlsoBlock] = useState(true);
+  // ponytail: blocking is hidden, not removed — the route, the table and the
+  // bidirectional filtering all still work. Re-add the button to bring it back.
+  const [alsoBlock] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<"blocked" | "reported" | null>(null);
+  const [done, setDone] = useState<"reported" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function block() {
-    if (!window.confirm(`Block ${name}? They're never told, and you'll both disappear from each other's plans and people.`)) return;
-    setBusy(true);
-    const res = await fetch("/api/blocks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
-    });
-    setBusy(false);
-    if (!res.ok) return setError("that didn't work");
-    setDone("blocked");
-    router.refresh();
-  }
 
   async function report() {
     setBusy(true);
@@ -52,9 +41,6 @@ export function PersonSafety({ userId, name }: { userId: string; name: string })
     router.refresh();
   }
 
-  if (done === "blocked") {
-    return <p className="font-bold text-accent">{name} is blocked. You can undo this in Settings.</p>;
-  }
   if (done === "reported") {
     return (
       <p className="font-bold text-accent">
@@ -69,9 +55,6 @@ export function PersonSafety({ userId, name }: { userId: string; name: string })
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-5">
-        <button type="button" disabled={busy} onClick={() => void block()} className={link}>
-          <UserX className="size-3.5" /> Block {name}
-        </button>
         <button type="button" onClick={() => setOpen((o) => !o)} className={link}>
           <Flag className="size-3.5" /> Report
         </button>
@@ -103,15 +86,6 @@ export function PersonSafety({ userId, name }: { userId: string; name: string })
               placeholder="Tell us enough that someone can act on it."
               className="mt-2 w-full rounded-sm border-2 border-foreground bg-background p-2"
             />
-          </label>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={alsoBlock}
-              onChange={(e) => setAlsoBlock(e.target.checked)}
-            />
-            Also block them — they&apos;re never told.
           </label>
 
           <button
