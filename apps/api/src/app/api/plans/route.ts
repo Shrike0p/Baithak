@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const neighborhood = typeof body.neighborhood === "string" ? body.neighborhood.trim() : "";
+  const exactAddress = typeof body.exactAddress === "string" ? body.exactAddress.trim() : "";
   const startsAt = new Date(body.startsAt);
   const capacity = Number(body.capacity);
   const category: PlanCategory = CATEGORIES.includes(body.category) ? body.category : "OTHER";
@@ -42,8 +43,11 @@ export async function POST(request: NextRequest) {
     ? body.vibeTags.filter((t: unknown): t is string => typeof t === "string")
     : [];
 
-  if (!title || !neighborhood) {
-    return NextResponse.json({ error: "title and neighborhood are required" }, { status: 400 });
+  if (!title || !neighborhood || !exactAddress) {
+    return NextResponse.json(
+      { error: "title, neighborhood and exact address are required" },
+      { status: 400 },
+    );
   }
   if (Number.isNaN(startsAt.getTime())) {
     return NextResponse.json({ error: "startsAt must be a valid date" }, { status: 400 });
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
       category,
       vibeTags,
       neighborhood,
-      exactAddress: typeof body.exactAddress === "string" ? body.exactAddress.trim() : null,
+      exactAddress,
       imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() : null,
       startsAt,
       capacity,

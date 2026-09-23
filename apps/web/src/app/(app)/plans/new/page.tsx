@@ -106,7 +106,12 @@ export default function MakeAPlanPage() {
   // Same rule the API enforces, surfaced before they hit save.
   const mixOverflows = targetWomen + targetMen > capacity;
   const canSubmit =
-    title.trim() && neighborhood.trim() && startsAt && !mixOverflows && status !== "saving";
+    title.trim() &&
+    neighborhood.trim() &&
+    exactAddress.trim() &&
+    startsAt &&
+    !mixOverflows &&
+    status !== "saving";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,7 +122,7 @@ export default function MakeAPlanPage() {
         category,
         startsAt: new Date(startsAt).toISOString(),
         neighborhood: neighborhood.trim(),
-        exactAddress: exactAddress.trim() || undefined,
+        exactAddress: exactAddress.trim(),
         capacity,
         vibeTags,
         imageUrl,
@@ -210,11 +215,11 @@ export default function MakeAPlanPage() {
             value={exactAddress}
             maxLength={60}
             onChange={(e) => setExactAddress(e.target.value)}
-            placeholder="Exact address (optional)"
+            placeholder="Exact address"
             className="mt-3 w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
           />
           <p className="mt-2 text-xs text-muted-foreground">
-            Only shared with guests you accept.
+            Required, and only ever shown to guests you accept.
           </p>
         </Field>
 

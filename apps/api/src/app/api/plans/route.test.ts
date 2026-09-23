@@ -16,6 +16,7 @@ function body(overrides: Record<string, unknown> = {}) {
   return {
     title: "Saturday House Party",
     neighborhood: "HSR Layout",
+    exactAddress: "221B, 4th Cross",
     startsAt: new Date(Date.now() + 86_400_000).toISOString(),
     capacity: 12,
     category: "HOUSE_PARTY",
