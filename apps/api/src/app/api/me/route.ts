@@ -47,6 +47,25 @@ export async function GET(request: NextRequest) {
 }
 
 /** Onboarding and profile edits. Only ever writes the caller's own row. */
+/**
+ * The bar onboarding has to clear before someone counts as onboarded — the
+ * same fields the apply gate and the host's applicant desk rely on.
+ */
+function isComplete(body: Record<string, unknown>): boolean {
+  const age = Number(body.age);
+  return (
+    Number.isInteger(age) &&
+    age >= 18 &&
+    age <= 120 &&
+    typeof body.city === "string" &&
+    body.city.trim().length > 0 &&
+    typeof body.gender === "string" &&
+    body.gender.length > 0 &&
+    Array.isArray(body.vibeTags) &&
+    body.vibeTags.length >= 2
+  );
+}
+
 export async function PATCH(request: NextRequest) {
   const userId = await getCurrentUserId(request);
   if (!userId) return NextResponse.json({ error: "sign in required" }, { status: 401 });
@@ -86,8 +105,12 @@ export async function PATCH(request: NextRequest) {
         ? body.vibeTags.filter((t: unknown): t is string => typeof t === "string").slice(0, 12)
         : undefined,
       // trustScore is never settable by the client — it's earned, not claimed.
-      // onboardedAt records when they first finished, so it's written once.
-      ...(existing?.onboardedAt ? {} : { onboardedAt: new Date() }),
+      //
+      // onboardedAt is written once, and ONLY when the profile actually clears
+      // the bar. It used to be stamped by any PATCH at all, so uploading an
+      // avatar mid-onboarding marked you done and the app layout waved you
+      // through to /discover with an empty profile.
+      ...(existing?.onboardedAt || !isComplete(body) ? {} : { onboardedAt: new Date() }),
     },
     select: {
       id: true, name: true, image: true, age: true, city: true, occupation: true,

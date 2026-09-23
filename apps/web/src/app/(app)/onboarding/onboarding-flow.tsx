@@ -40,8 +40,9 @@ export function OnboardingFlow({ next }: { next?: string }) {
       ? picked.length < 1 && "Pick at least one."
       : step === 2
         ? picked.length < 2 && "Pick at least two in total — one more gets you matched."
-        : (!(Number(age) >= 18 && Number(age) <= 120) && "Age is needed — hosts set an age range.") ||
-          (!city.trim() && "City is needed.");
+        : (!(Number(age) >= 18 && Number(age) <= 40) && "Age is needed — hosts set an age range.") ||
+          (!city.trim() && "City is needed.") ||
+          (!gender && "Pick one — it's only used for the group mix, never to filter you.");
 
   const options = step === 1 ? INTERESTS : VIBES;
   const toggle = (o: string) =>
@@ -116,7 +117,7 @@ export function OnboardingFlow({ next }: { next?: string }) {
             <input
               type="number"
               min={18}
-              max={120}
+              max={40}
               value={age}
               onChange={(e) => setAge(e.target.value)}
               className="rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
@@ -126,6 +127,7 @@ export function OnboardingFlow({ next }: { next?: string }) {
           <label className="paper-card flex flex-col gap-2 p-5">
             <span className="meta-label text-muted-foreground">City</span>
             <input
+              maxLength={60}
               value={city}
               onChange={(e) => setCity(e.target.value)}
               className="rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
@@ -135,6 +137,7 @@ export function OnboardingFlow({ next }: { next?: string }) {
           <label className="paper-card flex flex-col gap-2 p-5">
             <span className="meta-label text-muted-foreground">What do you do?</span>
             <input
+              maxLength={60}
               value={occupation}
               onChange={(e) => setOccupation(e.target.value)}
               placeholder="Designer, chef, student…"
@@ -143,7 +146,7 @@ export function OnboardingFlow({ next }: { next?: string }) {
           </label>
 
           <div className="paper-card p-5">
-            <p className="meta-label text-muted-foreground">Gender (optional)</p>
+            <p className="meta-label text-muted-foreground">Gender</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {GENDERS.map((g) => (
                 <button

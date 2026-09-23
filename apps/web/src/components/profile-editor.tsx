@@ -129,7 +129,7 @@ export function ProfileEditor({ me }: { me: Me }) {
             <SectionTitle kicker="Anyone in your plans can see this" title="About you" />
 
             <Field label="Name">
-              <input value={form.name} onChange={(e) => set("name", e.target.value)} className={inputClass} />
+              <input value={form.name} maxLength={60} onChange={(e) => set("name", e.target.value)} className={inputClass} />
             </Field>
 
             <div className="grid gap-5 sm:grid-cols-3">
@@ -137,18 +137,19 @@ export function ProfileEditor({ me }: { me: Me }) {
                 <input
                   type="number"
                   min={18}
-                  max={120}
+                  max={40}
                   value={form.age}
                   onChange={(e) => set("age", e.target.value)}
                   className={inputClass}
                 />
               </Field>
               <Field label="City">
-                <input value={form.city} onChange={(e) => set("city", e.target.value)} className={inputClass} />
+                <input value={form.city} maxLength={60} onChange={(e) => set("city", e.target.value)} className={inputClass} />
               </Field>
               <Field label="What you do">
                 <input
                   value={form.occupation}
+                  maxLength={60}
                   onChange={(e) => set("occupation", e.target.value)}
                   placeholder="Designer, chef…"
                   className={inputClass}
@@ -162,6 +163,7 @@ export function ProfileEditor({ me }: { me: Me }) {
             >
               <input
                 value={form.socialUrl}
+                maxLength={120}
                 onChange={(e) => set("socialUrl", e.target.value)}
                 placeholder="linkedin.com/in/yourname"
                 inputMode="url"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { ChevronRight, ImagePlus, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 import { createPlan } from "@/lib/api";
@@ -21,6 +21,22 @@ const CATEGORIES = [
 ];
 
 const CAPACITIES = [8, 12, 16];
+
+/**
+ * Now, as a datetime-local value — the earliest a plan may start.
+ *
+ * Cached on first call because useSyncExternalStore re-renders forever if
+ * getSnapshot hands back a fresh value each time. Pinning it to page load is
+ * fine: this is a floor on a date picker, not a live clock, and the API
+ * re-checks the time on submit anyway.
+ */
+let cachedLocalNow: string | null = null;
+function localNow() {
+  cachedLocalNow ??= new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+  return cachedLocalNow;
+}
 const VIBES = ["Music", "Drinks", "Dancing", "Chill", "Food", "Games", "Bollywood", "Outdoors"];
 
 function Field({ title, children }: { title: string; children: React.ReactNode }) {
@@ -62,6 +78,14 @@ export default function MakeAPlanPage() {
   const [neighborhood, setNeighborhood] = useState("");
   const [exactAddress, setExactAddress] = useState("");
   const [capacity, setCapacity] = useState(12);
+  // The clock is an external store, same as Countdown does it: the server and
+  // the browser sit in different timezones, so a floor computed during render
+  // mismatches on hydration. Empty on the server = no floor until mounted.
+  const minStartsAt = useSyncExternalStore(
+    () => () => {},
+    () => localNow(),
+    () => "",
+  );
   const [vibeTags, setVibeTags] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState(COVER_PRESETS[0].url);
   const [ageMin, setAgeMin] = useState(23);
@@ -130,6 +154,7 @@ export default function MakeAPlanPage() {
         <Field title="What are you calling it?">
           <input
             value={title}
+            maxLength={40}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Saturday House Party"
             className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
@@ -149,6 +174,7 @@ export default function MakeAPlanPage() {
         <Field title="When?">
           <input
             type="datetime-local"
+            min={minStartsAt}
             value={startsAt}
             onChange={(e) => setStartsAt(e.target.value)}
             className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
@@ -162,21 +188,13 @@ export default function MakeAPlanPage() {
                 {c}
               </Chip>
             ))}
-            <input
-              type="number"
-              min={2}
-              max={100}
-              value={capacity}
-              onChange={(e) => setCapacity(Number(e.target.value))}
-              aria-label="Custom capacity"
-              className="w-24 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
-            />
           </div>
         </Field>
 
         <Field title="Where?">
           <input
             value={neighborhood}
+            maxLength={60}
             onChange={(e) => setNeighborhood(e.target.value)}
             placeholder="HSR Layout, Bangalore"
             className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
@@ -187,6 +205,7 @@ export default function MakeAPlanPage() {
           </p>
           <input
             value={exactAddress}
+            maxLength={60}
             onChange={(e) => setExactAddress(e.target.value)}
             placeholder="Exact address (optional)"
             className="mt-3 w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
@@ -300,7 +319,7 @@ export default function MakeAPlanPage() {
               <input
                 type="number"
                 min={18}
-                max={99}
+                max={40}
                 value={ageMin}
                 onChange={(e) => setAgeMin(Number(e.target.value))}
                 aria-label="Minimum age"
@@ -310,7 +329,7 @@ export default function MakeAPlanPage() {
               <input
                 type="number"
                 min={18}
-                max={99}
+                max={40}
                 value={ageMax}
                 onChange={(e) => setAgeMax(Number(e.target.value))}
                 aria-label="Maximum age"

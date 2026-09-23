@@ -71,7 +71,7 @@ export function CompleteProfileStep({
             <input
               type="number"
               min={18}
-              max={120}
+              max={40}
               value={age}
               onChange={(e) => setAge(e.target.value)}
               className="rounded-sm border-2 border-foreground bg-background p-2.5 outline-none focus:shadow-stamp-sm"
@@ -81,6 +81,7 @@ export function CompleteProfileStep({
             <span className="meta-label text-muted-foreground">City</span>
             <input
               value={city}
+              maxLength={60}
               onChange={(e) => setCity(e.target.value)}
               className="rounded-sm border-2 border-foreground bg-background p-2.5 outline-none focus:shadow-stamp-sm"
             />
@@ -107,6 +108,7 @@ export function CompleteProfileStep({
         <p className="meta-label text-muted-foreground">{prompt}</p>
         <input
           value={bio}
+          maxLength={60}
           onChange={(e) => setBio(e.target.value)}
           placeholder="Optional, but it helps a lot"
           className="mt-2 w-full rounded-sm border-2 border-foreground bg-background p-2.5 text-sm outline-none focus:shadow-stamp-sm"
