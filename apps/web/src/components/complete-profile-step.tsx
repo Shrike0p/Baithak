@@ -15,14 +15,24 @@ const VIBES = [
  * needs to know who they're letting in" — which is a very different thing from
  * a wall in front of browsing.
  */
+/** Profile fields we already have — onboarding asked for them once. */
+export interface KnownProfile {
+  age: number | null;
+  city: string | null;
+}
+
 export function CompleteProfileStep({
   missing,
+  known,
   onDone,
 }: {
   missing: string[];
+  known?: KnownProfile;
   onDone: () => void;
 }) {
-  const needsBasics = missing.includes("basics");
+  // "basics" is age AND city; only ask for the half that's actually empty.
+  const needsAge = missing.includes("basics") && !known?.age;
+  const needsCity = missing.includes("basics") && !known?.city?.trim();
   const needsVibe = missing.includes("vibe");
   // A host can demand these three for their own plan, so they have to be
   // fillable right here — otherwise the applicant is told what's missing and
@@ -44,7 +54,8 @@ export function CompleteProfileStep({
     setVibeTags((t) => (t.includes(v) ? t.filter((x) => x !== v) : [...t, v]));
 
   const ready =
-    (!needsBasics || (Number(age) >= 18 && city.trim())) &&
+    (!needsAge || Number(age) >= 18) &&
+    (!needsCity || city.trim()) &&
     (!needsVibe || vibeTags.length >= 2) &&
     (!needsSocial || socialUrl.trim().length > 0) &&
     (!needsOccupation || occupation.trim().length > 0) &&
@@ -56,7 +67,8 @@ export function CompleteProfileStep({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...(needsBasics ? { age: Number(age), city: city.trim() } : {}),
+        ...(needsAge ? { age: Number(age) } : {}),
+        ...(needsCity ? { city: city.trim() } : {}),
         ...(needsVibe ? { vibeTags } : {}),
         ...(bio.trim() ? { bio: bio.trim() } : {}),
         ...(socialUrl.trim() ? { socialUrl: socialUrl.trim() } : {}),
@@ -77,28 +89,32 @@ export function CompleteProfileStep({
         </p>
       </div>
 
-      {needsBasics && (
+      {(needsAge || needsCity) && (
         <div className="flex gap-3">
-          <label className="flex flex-1 flex-col gap-2">
-            <span className="meta-label text-muted-foreground">Age</span>
-            <input
-              type="number"
-              min={18}
-              max={40}
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              className="rounded-sm border-2 border-foreground bg-background p-2.5 outline-none focus:shadow-stamp-sm"
-            />
-          </label>
-          <label className="flex flex-[2] flex-col gap-2">
-            <span className="meta-label text-muted-foreground">City</span>
-            <input
-              value={city}
-              maxLength={60}
-              onChange={(e) => setCity(e.target.value)}
-              className="rounded-sm border-2 border-foreground bg-background p-2.5 outline-none focus:shadow-stamp-sm"
-            />
-          </label>
+          {needsAge && (
+            <label className="flex flex-1 flex-col gap-2">
+              <span className="meta-label text-muted-foreground">Age</span>
+              <input
+                type="number"
+                min={18}
+                max={40}
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                className="rounded-sm border-2 border-foreground bg-background p-2.5 outline-none focus:shadow-stamp-sm"
+              />
+            </label>
+          )}
+          {needsCity && (
+            <label className="flex flex-[2] flex-col gap-2">
+              <span className="meta-label text-muted-foreground">City</span>
+              <input
+                value={city}
+                maxLength={60}
+                onChange={(e) => setCity(e.target.value)}
+                className="rounded-sm border-2 border-foreground bg-background p-2.5 outline-none focus:shadow-stamp-sm"
+              />
+            </label>
+          )}
         </div>
       )}
 

@@ -14,7 +14,7 @@ import {
   Sparkles,
   UsersRound,
 } from "lucide-react";
-import { getPlan } from "@/lib/api";
+import { getMe, getPlan } from "@/lib/api";
 import { planArt } from "@/lib/plan-art";
 import { CoverPicker } from "@/components/cover-picker";
 import { MemoryGallery } from "@/components/memory-gallery";
@@ -69,6 +69,8 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
   const plan = await getPlan(id).catch(() => null);
   if (!plan) notFound();
   const signedIn = Boolean(getSessionCookie(await headers()));
+  // Only for the join step — so it can prefill rather than re-ask onboarding's answers.
+  const me = signedIn && !plan.isAttending && !plan.isHost ? await getMe().catch(() => null) : null;
 
   const art = planArt(plan.category, plan.imageUrl);
   const { composition: mix } = plan;
@@ -297,6 +299,8 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
                 {signedIn ? (
                   <RequestToJoin
                     planId={plan.id}
+                    planTitle={plan.title}
+                    profile={me ? { age: me.age, city: me.city } : undefined}
                     questions={plan.rsvpQuestions}
                     houseRules={plan.houseRules}
                   />
