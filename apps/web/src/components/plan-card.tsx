@@ -34,13 +34,15 @@ export function PlanCard({
           large ? "md:grid md:grid-cols-[1.2fr_.8fr]" : ""
         }`}
       >
-        <div className="relative overflow-hidden">
+        {/* On md the image is absolute so the text column sets the row height —
+            in flow, its aspect ratio would stretch the card instead. */}
+        <div className={`relative overflow-hidden ${large ? "md:min-h-80" : ""}`}>
           <Image
             src={art.image}
             alt={`${plan.title} gathering`}
             width={large ? 1400 : 1100}
             height={large ? 1000 : 800}
-            className={`${large ? "h-64 md:h-full" : "h-48"} w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]`}
+            className={`${large ? "h-64 md:absolute md:inset-0 md:h-full" : "h-48"} w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]`}
           />
           <span className="absolute left-3 top-3">
             <Pill tone="orange">{formatWhen(plan.startsAt)}</Pill>
