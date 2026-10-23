@@ -101,6 +101,11 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
           },
         })),
     viewerSignedIn: Boolean(userId),
+    // What the join form asks. Sent up front so the applicant sees the whole
+    // ask at once instead of hitting a 422 after they've filled it in.
+    rsvpQuestions: plan.rsvpQuestions,
+    houseRules: plan.houseRules,
+    requiredOfGuests: plan.requiredOfGuests,
     status: plan.status,
     hasStarted,
     isAttending: viewerIsConfirmedAttendee,

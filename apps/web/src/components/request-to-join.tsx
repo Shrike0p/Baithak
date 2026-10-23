@@ -3,10 +3,9 @@
 import { useRef, useState } from "react";
 import { Check, X } from "lucide-react";
 import { applyToPlan, ApiError } from "@/lib/api";
-import { Button } from "@/components/ui";
+import { Button, Pill } from "@/components/ui";
 import { useSound } from "@/lib/use-sound";
-import { CompleteProfileStep, type KnownProfile } from "@/components/complete-profile-step";
-import { rsvpQuestion } from "@baithak/types";
+import { BIO_PROMPTS, profileStrength, rsvpQuestion, type ProfileInput } from "@baithak/types";
 
 const BRINGING_OPTIONS = [
   { value: "SOLO", label: "Solo" },
@@ -16,10 +15,25 @@ const BRINGING_OPTIONS = [
 
 type Bringing = (typeof BRINGING_OPTIONS)[number]["value"];
 
+const VIBES = [
+  "Chill", "Social", "Loud", "Adventurous", "Music lover",
+  "Foodie", "Night owl", "Spontaneous", "Bollywood", "Games",
+];
+
+const STEP_LABEL: Record<string, string> = {
+  basics: "your age and city",
+  vibe: "two vibe tags",
+  social: "a LinkedIn, Instagram or X link",
+  occupation: "what you do",
+  bio: "a line about you",
+};
+
 const chip = (on: boolean) =>
   `rounded-sm border-2 border-foreground px-3 py-1.5 text-sm font-bold transition-transform duration-150 active:translate-x-0.5 active:translate-y-0.5 ${
     on ? "bg-foreground text-background shadow-stamp-sm" : "bg-background hover:bg-muted"
   }`;
+const input =
+  "w-full rounded-sm border-2 border-foreground bg-background p-2.5 text-sm outline-none focus:shadow-stamp-sm";
 
 function Section({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -34,11 +48,21 @@ function Section({ n, title, hint, children }: { n: number; title: string; hint?
   );
 }
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="meta-label text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 export function RequestToJoin({
   planId,
   planTitle,
   questions = [],
   houseRules,
+  requiredOfGuests = [],
   profile,
 }: {
   planId: string;
@@ -46,8 +70,10 @@ export function RequestToJoin({
   /** Screening question ids this host chose, in their order. */
   questions?: string[];
   houseRules?: string | null;
-  /** What we already know, so the profile step never re-asks it. */
-  profile?: KnownProfile;
+  /** Profile steps this host demands on top of the platform baseline. */
+  requiredOfGuests?: string[];
+  /** The applicant's profile, so the form asks only for what's actually missing. */
+  profile?: ProfileInput;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [bringingWith, setBringingWith] = useState<Bringing>("SOLO");
@@ -55,15 +81,42 @@ export function RequestToJoin({
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [agreed, setAgreed] = useState(false);
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [missing, setMissing] = useState<string[] | null>(null);
+  const [error, setError] = useState("");
   const { play } = useSound();
+
+  // The same rule the API's gate runs, so the form shows the whole ask before
+  // anyone fills it in — not after, as a 422 that swaps the screen out.
+  const [missing, setMissing] = useState<string[]>(() =>
+    profile ? profileStrength(profile, requiredOfGuests).missingRequired.map((s) => s.key) : [],
+  );
+  const [details, setDetails] = useState({
+    age: "",
+    city: profile?.city?.trim() || "Bangalore",
+    vibeTags: profile?.vibeTags ?? [],
+    socialUrl: "",
+    occupation: "",
+    bio: "",
+  });
+  const set = (patch: Partial<typeof details>) => setDetails((d) => ({ ...d, ...patch }));
+  const [prompt] = useState(() => BIO_PROMPTS[Math.floor(Math.random() * BIO_PROMPTS.length)]);
+  // "basics" is age AND city; only ask for the half that's actually empty.
+  const needsAge = missing.includes("basics") && !profile?.age;
+  const needsCity = missing.includes("basics") && !profile?.city?.trim();
 
   const asked = questions.map(rsvpQuestion).filter((q) => q !== undefined);
   const unanswered = asked.filter((q) => {
     const a = answers[q.id];
     return Array.isArray(a) ? a.length === 0 : !a;
   });
-  const blocked = unanswered.length > 0 || (Boolean(houseRules) && !agreed);
+  const profileGaps = [
+    needsAge && !(Number(details.age) >= 18 && Number(details.age) <= 120),
+    needsCity && !details.city.trim(),
+    missing.includes("vibe") && details.vibeTags.length < 2,
+    missing.includes("social") && !details.socialUrl.trim(),
+    missing.includes("occupation") && !details.occupation.trim(),
+    missing.includes("bio") && !details.bio.trim(),
+  ].filter(Boolean).length;
+  const left = profileGaps + unanswered.length;
 
   function pick(id: string, value: string, multi: boolean, max: number) {
     setAnswers((prev) => {
@@ -76,27 +129,65 @@ export function RequestToJoin({
     });
   }
 
+  async function saveProfile(): Promise<boolean> {
+    const res = await fetch("/api/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(needsAge ? { age: Number(details.age) } : {}),
+        ...(needsCity ? { city: details.city.trim() } : {}),
+        ...(missing.includes("vibe") ? { vibeTags: details.vibeTags } : {}),
+        ...(missing.includes("social") ? { socialUrl: details.socialUrl.trim() } : {}),
+        ...(missing.includes("occupation") ? { occupation: details.occupation.trim() } : {}),
+        ...(missing.includes("bio") ? { bio: details.bio.trim() } : {}),
+      }),
+    });
+    if (!res.ok) {
+      setError("Couldn't save your profile. Try again.");
+      return false;
+    }
+    // The API drops what it can't use (an unrecognised link becomes null), so
+    // judge what it actually stored rather than what was typed.
+    const still = profileStrength(await res.json(), requiredOfGuests).missingRequired.map((s) => s.key);
+    if (still.length) {
+      setMissing(still);
+      setError(`Still need ${still.map((k) => STEP_LABEL[k] ?? k).join(" and ")}.`);
+      return false;
+    }
+    return true;
+  }
+
   async function submit() {
     setStatus("sending");
+    setError("");
     try {
+      if (missing.length && !(await saveProfile())) {
+        setStatus("idle");
+        return;
+      }
       await applyToPlan(planId, {
         bringingWith,
         note: note || undefined,
         answers,
         agreed: houseRules ? agreed : undefined,
       });
+      setMissing([]);
       setStatus("sent");
-      setMissing(null);
       play("stamp");
     } catch (err) {
-      // 422 means the profile is too thin for a host to judge — ask for the
-      // missing pieces here rather than letting a doomed request through.
-      const incomplete = err instanceof ApiError && err.status === 422 && Array.isArray(err.body?.missing);
-      if (incomplete) {
-        setMissing(err.body?.missing as string[]);
+      // Only reachable if our copy of the profile was stale — fold the server's
+      // list into the same form rather than switching to a different screen.
+      if (err instanceof ApiError && err.status === 422 && Array.isArray(err.body?.missing)) {
+        setMissing(err.body.missing as string[]);
+        setError(String(err.body?.message ?? "This host needs a bit more about you."));
         setStatus("idle");
         return;
       }
+      setError(
+        err instanceof ApiError && typeof err.body?.message === "string"
+          ? err.body.message
+          : "Something went wrong — try again.",
+      );
       setStatus("error");
     }
   }
@@ -116,9 +207,11 @@ export function RequestToJoin({
         <div className="space-y-4">
           <p className="text-sm">
             The host picks the crew.{" "}
-            {asked.length > 0 || houseRules
-              ? "They've got a couple of questions first."
-              : "Tell them who's coming and you're in the queue."}
+            {missing.length
+              ? `They'll want ${missing.map((k) => STEP_LABEL[k] ?? k).join(" and ")} — it's all on the next screen.`
+              : asked.length > 0 || houseRules
+                ? "They've got a couple of questions first."
+                : "Tell them who's coming and you're in the queue."}
           </p>
           <Button onClick={() => dialog.current?.showModal()} className="w-full">
             Request to join
@@ -161,10 +254,6 @@ export function RequestToJoin({
                 <Check /> Done
               </Button>
             </div>
-          ) : missing ? (
-            <div className="overflow-y-auto px-6 py-6">
-              <CompleteProfileStep missing={missing} known={profile} onDone={submit} />
-            </div>
           ) : (
             <form
               onSubmit={(e) => {
@@ -174,6 +263,109 @@ export function RequestToJoin({
               className="flex min-h-0 flex-1 flex-col"
             >
               <div className="flex-1 space-y-7 overflow-y-auto px-6 py-6">
+                {missing.length > 0 && (
+                  <Section
+                    n={++n}
+                    title="About you"
+                    hint="Hosts pick from profiles. This saves to yours, so you only do it once."
+                  >
+                    <div className="space-y-4">
+                      {(needsAge || needsCity) && (
+                        <div className="flex gap-3">
+                          {needsAge && (
+                            <div className="flex-1">
+                              <Field label="Age">
+                                <input
+                                  type="number"
+                                  min={18}
+                                  max={120}
+                                  value={details.age}
+                                  onChange={(e) => set({ age: e.target.value })}
+                                  className={input}
+                                />
+                              </Field>
+                            </div>
+                          )}
+                          {needsCity && (
+                            <div className="flex-2">
+                              <Field label="City">
+                                <input
+                                  value={details.city}
+                                  maxLength={60}
+                                  onChange={(e) => set({ city: e.target.value })}
+                                  className={input}
+                                />
+                              </Field>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {missing.includes("vibe") && (
+                        <div>
+                          <p className="meta-label text-muted-foreground">Your vibe — pick at least two</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {VIBES.map((v) => (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() =>
+                                  set({
+                                    vibeTags: details.vibeTags.includes(v)
+                                      ? details.vibeTags.filter((x) => x !== v)
+                                      : [...details.vibeTags, v],
+                                  })
+                                }
+                              >
+                                <Pill tone={details.vibeTags.includes(v) ? "purple" : "plain"}>{v}</Pill>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {missing.includes("social") && (
+                        <Field label="One social account">
+                          <input
+                            value={details.socialUrl}
+                            maxLength={120}
+                            inputMode="url"
+                            onChange={(e) => set({ socialUrl: e.target.value })}
+                            placeholder="linkedin.com/in/yourname"
+                            className={input}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            LinkedIn, Instagram or X. This host asks for one before they&apos;ll consider you.
+                          </span>
+                        </Field>
+                      )}
+
+                      {missing.includes("occupation") && (
+                        <Field label="What you do">
+                          <input
+                            value={details.occupation}
+                            maxLength={60}
+                            onChange={(e) => set({ occupation: e.target.value })}
+                            placeholder="Designer, chef…"
+                            className={input}
+                          />
+                        </Field>
+                      )}
+
+                      {missing.includes("bio") && (
+                        <Field label={prompt}>
+                          <input
+                            value={details.bio}
+                            maxLength={60}
+                            onChange={(e) => set({ bio: e.target.value })}
+                            className={input}
+                          />
+                        </Field>
+                      )}
+                    </div>
+                  </Section>
+                )}
+
                 <Section n={++n} title="Who's coming?">
                   <div className="flex flex-wrap gap-2">
                     {BRINGING_OPTIONS.map((opt) => (
@@ -205,7 +397,7 @@ export function RequestToJoin({
                           maxLength={300}
                           rows={2}
                           onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                          className="w-full rounded-sm border-2 border-foreground bg-background p-3 text-sm outline-none focus:shadow-stamp-sm"
+                          className={`${input} p-3`}
                         />
                       ) : (
                         <div className="flex flex-wrap gap-2">
@@ -252,21 +444,23 @@ export function RequestToJoin({
                     placeholder="Anything the host should know?"
                     maxLength={300}
                     rows={2}
-                    className="w-full rounded-sm border-2 border-foreground bg-background p-3 text-sm outline-none focus:shadow-stamp-sm"
+                    className={`${input} p-3`}
                   />
                 </Section>
               </div>
 
               <footer className="border-t-2 border-foreground bg-card px-6 py-4">
-                {status === "error" && (
-                  <p className="meta-label mb-3 text-primary">Something went wrong — try again</p>
-                )}
-                <Button type="submit" disabled={status === "sending" || blocked} className="w-full">
+                {error && <p className="meta-label mb-3 text-primary">{error}</p>}
+                <Button
+                  type="submit"
+                  disabled={status === "sending" || left > 0 || (Boolean(houseRules) && !agreed)}
+                  className="w-full"
+                >
                   {status === "sending"
                     ? "Sending…"
-                    : unanswered.length
-                      ? `${unanswered.length} left to answer`
-                      : blocked
+                    : left > 0
+                      ? `${left} left to fill in`
+                      : houseRules && !agreed
                         ? "Tick the house rules"
                         : "Send my request"}
                 </Button>

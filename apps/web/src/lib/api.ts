@@ -74,6 +74,8 @@ export interface PlanDetail extends Omit<PlanSummary, "confirmedCount"> {
   /** Screening question ids the host chose, in their order. */
   rsvpQuestions: string[];
   houseRules: string | null;
+  /** Profile steps this host demands on top of the baseline. */
+  requiredOfGuests: string[];
   isHost: boolean;
   viewerSignedIn: boolean;
   status: string;

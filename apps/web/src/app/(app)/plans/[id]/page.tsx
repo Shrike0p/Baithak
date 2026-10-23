@@ -300,7 +300,8 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
                   <RequestToJoin
                     planId={plan.id}
                     planTitle={plan.title}
-                    profile={me ? { age: me.age, city: me.city } : undefined}
+                    requiredOfGuests={plan.requiredOfGuests}
+                    profile={me ?? undefined}
                     questions={plan.rsvpQuestions}
                     houseRules={plan.houseRules}
                   />
