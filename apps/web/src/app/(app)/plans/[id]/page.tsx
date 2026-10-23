@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { getSessionCookie } from "better-auth/cookies";
 import {
   Check,
   ChevronRight,
@@ -66,6 +68,7 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
   const { id } = await params;
   const plan = await getPlan(id).catch(() => null);
   if (!plan) notFound();
+  const signedIn = Boolean(getSessionCookie(await headers()));
 
   const art = planArt(plan.category, plan.imageUrl);
   const { composition: mix } = plan;
@@ -291,11 +294,22 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
             <PaperCard className="p-5">
               <h2 className="text-2xl uppercase">Want in?</h2>
               <div className="mt-4">
-                <RequestToJoin
-                  planId={plan.id}
-                  questions={plan.rsvpQuestions}
-                  houseRules={plan.houseRules}
-                />
+                {signedIn ? (
+                  <RequestToJoin
+                    planId={plan.id}
+                    questions={plan.rsvpQuestions}
+                    houseRules={plan.houseRules}
+                  />
+                ) : (
+                  // A forwarded link reaches people with no account; the form
+                  // would only 401. ?next= brings them back here after onboarding.
+                  <>
+                    <p className="text-sm">Hosts pick their crew from Baithak profiles. Make yours to ask in.</p>
+                    <Button href={`/sign-up?next=/plans/${plan.id}`} className="mt-4 w-full">
+                      Join Baithak to join this party
+                    </Button>
+                  </>
+                )}
               </div>
             </PaperCard>
           )}

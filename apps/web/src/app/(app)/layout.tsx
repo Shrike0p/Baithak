@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getMe, getNotifications } from "@/lib/api";
+import { ApiError, getMe, getNotifications } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -11,7 +11,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // unreachable this guard let everyone past onboarding. undefined = couldn't
   // ask, null = genuinely signed out.
   const [me, notifications, requestHeaders] = await Promise.all([
-    getMe().catch(() => undefined),
+    getMe().catch((err) => (err instanceof ApiError && err.status === 401 ? null : undefined)),
     getNotifications().catch(() => ({ unread: 0 })),
     headers(),
   ]);
