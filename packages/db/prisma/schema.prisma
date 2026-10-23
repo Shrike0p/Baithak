@@ -152,6 +152,21 @@ model Plan {
   status        PlanStatus   @default(OPEN)
   createdAt     DateTime     @default(now())
 
+  // Profile steps this host insists on before someone may even apply — step
+  // keys from @baithak/types (social, occupation, bio). Empty means the
+  // platform baseline only. Stored per plan, not per host: the bar for a
+  // twelve-person house party is not the bar for a board-game night.
+  requiredOfGuests String[] @default([])
+
+  // Screening questions from @baithak/types' catalogue, by id, in the order the
+  // host chose. Ids rather than embedded copies: the wording is ours to fix,
+  // and a typo shouldn't be frozen into every plan that ever asked it.
+  rsvpQuestions String[] @default([])
+
+  // Shown before the RSVP, with a checkbox the guest has to tick. Null means
+  // this host hasn't written any and the checkbox is skipped entirely.
+  houseRules String?
+
   attendees    PlanAttendee[]
   applications Application[]
   crowd        CrowdPreference?
@@ -433,6 +448,13 @@ model Application {
   note         String?
   matchScore   Float?
   matchReasons String[]
+
+  // Answers to the host's screening questions, keyed by question id. Json
+  // because the shape belongs to the catalogue, not the database — a table of
+  // answer rows would buy nothing here and cost a join on every desk render.
+  answers Json @default("{}")
+  // When they ticked the house rules. Null means this plan had none to tick.
+  agreedAt DateTime?
   createdAt    DateTime          @default(now())
   decidedAt    DateTime?
 

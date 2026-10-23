@@ -27,6 +27,15 @@ function body(overrides: Record<string, unknown> = {}) {
 const post = (b: unknown) =>
   POST({ json: async () => b, headers: new Headers() } as never);
 
+describe("POST /api/plans — launch areas", () => {
+  it("refuses a neighbourhood we aren't open in", async () => {
+    const res = await post(body({ neighborhood: "Whitefield" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("Koramangala");
+    expect(plan.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/plans — crowd mix", () => {
   it("rejects a mix that adds up to more than the room", async () => {
     const res = await post(body({ crowd: { targetWomen: 12, targetMen: 12 } }));

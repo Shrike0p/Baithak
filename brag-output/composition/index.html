@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Baithak — brag</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/music/audio-data.js"></script>
+    <style>
+      /* Baithak's own faces, self-hosted next to the composition. */
+      @font-face {
+        font-family: "Archivo Black";
+        src: url("assets/fonts/archivo-black.woff2") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "DM Sans";
+        src: url("assets/fonts/dm-sans.woff2") format("woff2");
+        font-weight: 100 1000;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("assets/fonts/ibm-plex-mono.woff2") format("woff2");
+        font-weight: 700;
+        font-style: normal;
+        font-display: block;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        /* Exact palette from docs/PRODUCT_PLAN.md */
+        --cream: #f5f0e6;
+        --paper: #fdf8f0;
+        --ink: #171717;
+        --orange: #f05a28;
+        /* Orange text on cream needs a hair more depth to clear WCAG 3:1. */
+        --orange-ink: #e05420;
+        --purple: #7657e8;
+        --green: #4f8a63;
+        --ink-soft: #46413a;
+        /* Driven per frame from the music: subtle depth + warmth only. */
+        --hf-rms: 0;
+        --hf-bass: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--cream);
+      }
+
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "DM Sans", sans-serif;
+        color: var(--ink);
+        background: var(--cream);
+      }
+
+      /* Scrapbook paper texture — the app's own body dot grid. */
+      #paper-bg {
+        position: absolute;
+        inset: 0;
+        background-color: var(--cream);
+        background-image: radial-gradient(rgba(23, 23, 23, 0.1) 1.1px, transparent 1.1px);
+        background-size: 9px 9px;
+      }
+
+      /* Audio-reactive warmth: the cream breathes with the music bed. */
+      #warmth {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 42%, var(--orange) 0%, transparent 68%);
+        opacity: calc(0.014 + (var(--hf-rms) * 0.055));
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 96px 120px;
+      }
+
+      /* The signature: 2px ink border + hard offset shadow. The offset depth
+         breathes very slightly with the bass. */
+      .paper-card {
+        background: var(--paper);
+        border: 2px solid var(--ink);
+        box-shadow: calc(7px + (var(--hf-bass) * 4px)) calc(7px + (var(--hf-bass) * 4px)) 0
+          var(--ink);
+      }
+
+      .display {
+        font-family: "Archivo Black", sans-serif;
+        text-transform: uppercase;
+        line-height: 0.86;
+        letter-spacing: 0;
+      }
+
+      .meta {
+        font-family: "IBM Plex Mono", monospace;
+        text-transform: uppercase;
+        font-weight: 700;
+        font-size: 26px;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 2px solid var(--ink);
+        border-radius: 999px;
+        padding: 7px 20px;
+        background: var(--cream);
+        font-family: "IBM Plex Mono", monospace;
+        text-transform: uppercase;
+        font-weight: 700;
+        font-size: 25px;
+        line-height: 1.15;
+        white-space: nowrap;
+      }
+      .pill.orange {
+        background: var(--orange);
+        color: var(--ink);
+      }
+      .pill.purple {
+        background: var(--purple);
+        color: var(--paper);
+      }
+      .pill.green {
+        background: var(--green);
+        color: var(--paper);
+      }
+
+      /* ---------- Scene 1 — the hook ---------- */
+      #s1-copy {
+        max-width: 1280px;
+      }
+      .hook-line {
+        display: block;
+        font-size: 138px;
+      }
+      #s1-l2 {
+        color: var(--orange-ink);
+      }
+      #s1-sticker {
+        position: absolute;
+        right: 132px;
+        top: 214px;
+        background: var(--purple);
+        color: var(--paper);
+        border: 2px solid var(--ink);
+        box-shadow: 4px 4px 0 var(--ink);
+        padding: 26px 34px;
+        font-family: "Archivo Black", sans-serif;
+        text-transform: uppercase;
+        font-size: 50px;
+        line-height: 1.02;
+        text-align: center;
+      }
+      #s1-sub {
+        margin-top: 44px;
+        font-size: 40px;
+        font-weight: 500;
+        color: var(--ink-soft);
+      }
+
+      /* ---------- Scene 2 — the plan flyer ---------- */
+      #s2 .scene {
+        align-items: center;
+      }
+      #s2-card {
+        width: 1020px;
+        display: flex;
+        flex-direction: column;
+      }
+      #s2-photo {
+        position: relative;
+        height: 392px;
+        overflow: hidden;
+        border-bottom: 2px solid var(--ink);
+      }
+      #s2-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      #s2-when {
+        position: absolute;
+        left: 22px;
+        top: 22px;
+      }
+      #s2-body {
+        padding: 30px 36px 30px;
+      }
+      #s2-title {
+        font-size: 82px;
+        margin-top: 12px;
+      }
+      #s2-tags {
+        display: flex;
+        gap: 12px;
+        margin-top: 22px;
+      }
+      #s2-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 2px solid var(--ink);
+        border-bottom: 2px solid var(--ink);
+        margin-top: 26px;
+        padding: 12px 0;
+      }
+      #s2-spots {
+        color: var(--orange-ink);
+        display: inline-block;
+      }
+      #s2-cta {
+        margin-top: 18px;
+      }
+
+      /* ---------- Scene 3 — request to join ---------- */
+      #s3 .scene {
+        align-items: center;
+      }
+      #s3-panel {
+        width: 1080px;
+        padding: 46px 52px 50px;
+      }
+      #s3-h {
+        font-size: 66px;
+      }
+      #s3-chips {
+        display: flex;
+        gap: 16px;
+        margin-top: 16px;
+      }
+      .choice {
+        border: 2px solid var(--ink);
+        background: var(--cream);
+        box-shadow: 3px 3px 0 var(--ink);
+        padding: 14px 30px;
+        font-size: 30px;
+        font-weight: 700;
+      }
+      .choice.picked {
+        background: var(--orange);
+        color: var(--ink);
+      }
+      #s3-label-note {
+        margin-top: 34px;
+      }
+      #s3-field {
+        margin-top: 14px;
+        border: 2px solid var(--ink);
+        background: var(--cream);
+        padding: 20px 24px;
+        font-size: 32px;
+        min-height: 78px;
+      }
+      #s3-caret {
+        display: inline-block;
+        width: 3px;
+        height: 34px;
+        background: var(--ink);
+        vertical-align: -6px;
+        margin-left: 3px;
+      }
+      #s3-send {
+        margin-top: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--orange);
+        color: var(--ink);
+        border: 2px solid var(--ink);
+        box-shadow: 5px 5px 0 var(--ink);
+        padding: 18px 40px;
+        font-family: "DM Sans", sans-serif;
+        font-size: 32px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      /* ---------- Scene 4 — the host decides ---------- */
+      #s4 .scene {
+        align-items: center;
+      }
+      #s4-desk {
+        width: 1180px;
+        padding: 40px 48px 44px;
+      }
+      #s4-tabs {
+        display: flex;
+        gap: 12px;
+      }
+      #s4-who {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-top: 32px;
+      }
+      #s4-avatar {
+        width: 106px;
+        height: 106px;
+        border-radius: 999px;
+        border: 2px solid var(--ink);
+        background: var(--purple);
+        color: var(--paper);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Archivo Black", sans-serif;
+        font-size: 42px;
+      }
+      #s4-name {
+        font-size: 60px;
+      }
+      #s4-why {
+        margin-top: 32px;
+        border-top: 2px solid var(--ink);
+        padding-top: 26px;
+      }
+      .reason {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-top: 18px;
+        font-size: 34px;
+        font-weight: 500;
+      }
+      .reason i {
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        background: var(--orange);
+        flex: none;
+      }
+      #s4-actions {
+        display: flex;
+        gap: 18px;
+        margin-top: 38px;
+      }
+      .act {
+        border: 2px solid var(--ink);
+        box-shadow: 5px 5px 0 var(--ink);
+        padding: 16px 44px;
+        font-size: 32px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      #s4-accept {
+        background: var(--green);
+        color: var(--paper);
+      }
+      #s4-pass {
+        background: var(--cream);
+      }
+      #s4-stamp {
+        position: absolute;
+        left: 50%;
+        top: 52%;
+        margin-left: -430px;
+        margin-top: -112px;
+        width: 860px;
+        text-align: center;
+        background: var(--orange);
+        color: var(--ink);
+        border: 4px solid var(--ink);
+        box-shadow: 12px 12px 0 var(--ink);
+        padding: 44px 0 52px;
+        font-family: "Archivo Black", sans-serif;
+        text-transform: uppercase;
+        font-size: 124px;
+        line-height: 0.9;
+        opacity: 0;
+      }
+
+      /* ---------- Scene 5 — the party room ---------- */
+      #s5-kicker {
+        color: var(--orange-ink);
+      }
+      #s5-h {
+        font-size: 176px;
+        margin-top: 22px;
+      }
+      #s5-crew {
+        display: flex;
+        gap: 26px;
+        margin-top: 64px;
+      }
+      .crew {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 20px 26px;
+        min-width: 396px;
+      }
+      .crew .av {
+        width: 78px;
+        height: 78px;
+        border-radius: 999px;
+        border: 2px solid var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Archivo Black", sans-serif;
+        font-size: 30px;
+        color: var(--paper);
+        flex: none;
+      }
+      .crew h4 {
+        font-family: "Archivo Black", sans-serif;
+        text-transform: uppercase;
+        font-size: 34px;
+        font-weight: 400;
+        line-height: 1;
+        margin-bottom: 10px;
+      }
+
+      /* ---------- Scene 6 — wordmark ---------- */
+      #s6 .scene {
+        align-items: center;
+      }
+      #s6-mark {
+        display: flex;
+        align-items: center;
+        gap: 40px;
+      }
+      #s6-mark img {
+        width: 178px;
+        height: auto;
+        display: block;
+      }
+      #s6-word {
+        font-size: 188px;
+      }
+      #s6-tag {
+        margin-top: 34px;
+        font-size: 46px;
+        font-weight: 500;
+        text-align: center;
+      }
+      #s6-sticker {
+        position: absolute;
+        right: 210px;
+        bottom: 216px;
+      }
+
+      /* Simulated cursor */
+      .cursor {
+        position: absolute;
+        width: 44px;
+        height: 44px;
+        left: 0;
+        top: 0;
+        z-index: 40;
+        filter: drop-shadow(2px 2px 0 rgba(23, 23, 23, 0.35));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="22"
+      data-width="1920"
+      data-height="1080"
+      data-fps="30"
+    >
+      <div id="paper-bg"></div>
+      <div id="warmth"></div>
+
+      <!-- ================= Scene 1 — the hook (0 – 3.2) ================= -->
+      <section id="s1" class="clip" data-start="0" data-duration="3.2" data-track-index="0">
+        <div class="scene">
+          <div id="s1-copy">
+            <span id="s1-l1" class="display hook-line">You don't need a squad</span>
+            <span id="s1-l2" class="display hook-line">to have plans.</span>
+            <p id="s1-sub">Find people. Find plans. Make some memories.</p>
+          </div>
+          <div id="s1-sticker">
+            <div>Good people</div>
+            <div>Good nights</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== Scene 2 — the plan flyer (3.2 – 7.4) ============== -->
+      <section id="s2" class="clip" data-start="3.2" data-duration="4.2" data-track-index="0">
+        <div class="scene" id="s2-wrap">
+          <article id="s2-card" class="paper-card">
+            <div id="s2-photo">
+              <img src="assets/img/rooftop-drinks.jpg" alt="" />
+              <span id="s2-when" class="pill orange">Sat 8:30 PM</span>
+            </div>
+            <div id="s2-body">
+              <p class="meta">Koramangala</p>
+              <h2 id="s2-title" class="display">Terrace sundowners</h2>
+              <div id="s2-tags">
+                <span class="pill s2-tag">Chill</span>
+                <span class="pill s2-tag">Music lover</span>
+                <span class="pill s2-tag">Night owl</span>
+              </div>
+              <div id="s2-foot">
+                <span id="s2-spots" class="meta">3 spots left</span>
+                <span class="meta">Host · Ananya ★ 4.8</span>
+              </div>
+              <p id="s2-cta" class="meta">See the crew →</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ Scene 3 — request to join (7.4 – 10.4) ============ -->
+      <section id="s3" class="clip" data-start="7.4" data-duration="3" data-track-index="0">
+        <div class="scene" id="s3-wrap">
+          <div id="s3-panel" class="paper-card">
+            <h2 id="s3-h" class="display">Request to join</h2>
+            <p class="meta" style="margin-top: 30px; color: var(--ink-soft)">Coming with</p>
+            <div id="s3-chips">
+              <span class="choice" id="s3-solo">Solo</span>
+              <span class="choice" id="s3-friend">One friend</span>
+              <span class="choice" id="s3-group">Group</span>
+            </div>
+            <p id="s3-label-note" class="meta" style="color: var(--ink-soft)">Optional note</p>
+            <div id="s3-field"><span id="s3-typed"></span><span id="s3-caret"></span></div>
+            <div id="s3-send">Request to join</div>
+          </div>
+          <svg id="s3-cursor" class="cursor" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M5 2.5 L5 19 L9.4 15 L12.2 21.2 L15 19.9 L12.2 13.9 L18.4 13.6 Z"
+              fill="#FDF8F0"
+              stroke="#171717"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      </section>
+
+      <!-- =========== Scene 4 — the host decides (10.4 – 15.4) =========== -->
+      <section id="s4" class="clip" data-start="10.4" data-duration="5" data-track-index="0">
+        <div class="scene" id="s4-wrap">
+          <div id="s4-desk" class="paper-card">
+            <div id="s4-tabs">
+              <span class="pill orange">Best matches</span>
+              <span class="pill">Good fit</span>
+              <span class="pill">New people</span>
+            </div>
+            <div id="s4-who">
+              <div id="s4-avatar">PM</div>
+              <div>
+                <h2 id="s4-name" class="display">Priya M.</h2>
+                <p class="meta" style="margin-top: 10px; color: var(--ink-soft)">
+                  27 · Indiranagar · Bringing one friend
+                </p>
+              </div>
+            </div>
+            <div id="s4-why">
+              <p class="meta" style="color: var(--ink-soft)">Why they might fit</p>
+              <div class="reason" id="s4-r1"><i></i><span>3 vibe tags match this plan</span></div>
+              <div class="reason" id="s4-r2">
+                <i></i><span>A returning member vouches for her</span>
+              </div>
+            </div>
+            <div id="s4-actions">
+              <span class="act" id="s4-pass">Pass</span>
+              <span class="act" id="s4-accept">Accept</span>
+            </div>
+          </div>
+          <div id="s4-stamp" data-layout-allow-overlap="true">You're in ✓</div>
+          <svg id="s4-cursor" class="cursor" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M5 2.5 L5 19 L9.4 15 L12.2 21.2 L15 19.9 L12.2 13.9 L18.4 13.6 Z"
+              fill="#FDF8F0"
+              stroke="#171717"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      </section>
+
+      <!-- ============ Scene 5 — the party room (15.4 – 19.0) ============ -->
+      <section id="s5" class="clip" data-start="15.4" data-duration="3.6" data-track-index="0">
+        <div class="scene" id="s5-wrap">
+          <p id="s5-kicker" class="meta">Event day mode</p>
+          <h2 id="s5-h" class="display">Today's the day.</h2>
+          <div id="s5-crew">
+            <div class="crew paper-card" id="s5-c1">
+              <span class="av" style="background: var(--orange); color: var(--ink)">A</span>
+              <div>
+                <h4>Ananya</h4>
+                <span class="pill orange">Host</span>
+              </div>
+            </div>
+            <div class="crew paper-card" id="s5-c2">
+              <span class="av" style="background: var(--purple)">PM</span>
+              <div>
+                <h4>Priya M.</h4>
+                <span class="pill">First time</span>
+              </div>
+            </div>
+            <div class="crew paper-card" id="s5-c3">
+              <span class="av" style="background: var(--green)">DR</span>
+              <div>
+                <h4>Dev R.</h4>
+                <span class="pill green">Returning member</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============== Scene 6 — wordmark (19.0 – 22.0) ============== -->
+      <section id="s6" class="clip" data-start="19" data-duration="3" data-track-index="0">
+        <div class="scene" id="s6-wrap">
+          <div id="s6-mark">
+            <img src="assets/img/baithak-logo-2.png" alt="" />
+            <span id="s6-word" class="display">Baithak</span>
+          </div>
+          <p id="s6-tag">Find people. Find plans. Make some memories.</p>
+          <span id="s6-sticker" class="pill green">Verified · 4.8 ★</span>
+        </div>
+      </section>
+
+      <!-- ====================== Audio ====================== -->
+      <audio
+        id="bgm"
+        src="assets/music/happy-beats-business-moves-vol-9-by-ende-dot-app.mp3"
+        data-start="0"
+        data-duration="22"
+        data-track-index="10"
+        data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":0.4,"v":0.34},{"t":20.5,"v":0.34},{"t":22,"v":0}]}]}'
+      ></audio>
+
+      <!-- Scene 1 -->
+      <audio id="sfx-hook" src="assets/sfx/impact/impactSoft_medium_001.ogg" data-start="0.3" data-duration="0.18" data-track-index="11" data-volume="0.7"></audio>
+      <audio id="sfx-sticker" src="assets/sfx/interface/drop_001.ogg" data-start="1.5" data-duration="0.11" data-track-index="12" data-volume="0.45"></audio>
+      <!-- Scene 2 — card lands on the strong cue, tags tick the beat grid -->
+      <audio id="sfx-card" src="assets/sfx/impact/impactWood_medium_001.ogg" data-start="4.23" data-duration="0.33" data-track-index="11" data-volume="0.75"></audio>
+      <audio id="sfx-tag1" src="assets/sfx/interface/drop_002.ogg" data-start="4.75" data-duration="0.19" data-track-index="12" data-volume="0.35"></audio>
+      <audio id="sfx-tag2" src="assets/sfx/interface/drop_002.ogg" data-start="5.28" data-duration="0.19" data-track-index="13" data-volume="0.35"></audio>
+      <audio id="sfx-tag3" src="assets/sfx/interface/drop_002.ogg" data-start="5.8" data-duration="0.19" data-track-index="12" data-volume="0.35"></audio>
+      <audio id="sfx-spots" src="assets/sfx/interface/drop_001.ogg" data-start="6.34" data-duration="0.11" data-track-index="13" data-volume="0.4"></audio>
+      <!-- Scene 3 — simulated interaction -->
+      <audio id="sfx-pick" src="assets/sfx/ui/mouseclick1.ogg" data-start="8.44" data-duration="0.06" data-track-index="11" data-volume="0.6"></audio>
+      <audio id="sfx-k1" src="assets/sfx/keyboard/keypress-003.wav" data-start="8.62" data-duration="0.25" data-track-index="12" data-volume="0.3"></audio>
+      <audio id="sfx-k2" src="assets/sfx/keyboard/keypress-011.wav" data-start="8.78" data-duration="0.25" data-track-index="13" data-volume="0.28"></audio>
+      <audio id="sfx-k3" src="assets/sfx/keyboard/keypress-018.wav" data-start="8.96" data-duration="0.25" data-track-index="14" data-volume="0.3"></audio>
+      <audio id="sfx-k4" src="assets/sfx/keyboard/keypress-026.wav" data-start="9.12" data-duration="0.25" data-track-index="15" data-volume="0.28"></audio>
+      <audio id="sfx-send" src="assets/sfx/interface/click_003.ogg" data-start="10.01" data-duration="0.01" data-track-index="11" data-volume="0.6"></audio>
+      <!-- Scene 4 — applicant lands, reasons tick, then the payoff -->
+      <audio id="sfx-app" src="assets/sfx/impact/impactWood_medium_003.ogg" data-start="10.54" data-duration="0.33" data-track-index="12" data-volume="0.7"></audio>
+      <audio id="sfx-r1" src="assets/sfx/interface/drop_001.ogg" data-start="11.6" data-duration="0.11" data-track-index="13" data-volume="0.4"></audio>
+      <audio id="sfx-r2" src="assets/sfx/interface/drop_001.ogg" data-start="12.65" data-duration="0.11" data-track-index="14" data-volume="0.4"></audio>
+      <audio id="sfx-accept" src="assets/sfx/ui/mouseclick1.ogg" data-start="13.18" data-duration="0.06" data-track-index="11" data-volume="0.6"></audio>
+      <audio id="sfx-stamp" src="assets/sfx/impact/impactBell_heavy_000.ogg" data-start="14.22" data-duration="1.48" data-track-index="12" data-volume="0.85"></audio>
+      <!-- Scene 5 — the crew arrives -->
+      <audio id="sfx-c1" src="assets/sfx/interface/drop_002.ogg" data-start="15.81" data-duration="0.19" data-track-index="13" data-volume="0.38"></audio>
+      <audio id="sfx-c2" src="assets/sfx/interface/drop_002.ogg" data-start="16.86" data-duration="0.19" data-track-index="14" data-volume="0.38"></audio>
+      <audio id="sfx-c3" src="assets/sfx/interface/drop_002.ogg" data-start="17.91" data-duration="0.19" data-track-index="13" data-volume="0.38"></audio>
+      <!-- Scene 6 -->
+      <audio id="sfx-mark" src="assets/sfx/impact/impactSoft_medium_004.ogg" data-start="19.2" data-duration="0.15" data-track-index="11" data-volume="0.5"></audio>
+    </div>
+
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var tl = gsap.timeline({ paused: true });
+        var EASE = "power4.out";
+
+        /* ---------------- Scene 1 — the hook (0 – 3.2) ---------------- */
+        tl.fromTo("#s1-l1", { y: 74, opacity: 0 }, { y: 0, opacity: 1, duration: 0.42, ease: EASE }, 0.3);
+        tl.fromTo("#s1-l2", { y: 74, opacity: 0 }, { y: 0, opacity: 1, duration: 0.42, ease: EASE }, 0.9);
+        tl.fromTo("#s1-sub", { y: 26, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 1.15);
+        tl.fromTo(
+          "#s1-sticker",
+          { scale: 0.55, rotation: -22, opacity: 0 },
+          { scale: 1, rotation: 6, opacity: 1, duration: 0.5, ease: "back.out(1.7)" },
+          1.5,
+        );
+        tl.to("#s1 .scene", { opacity: 0, duration: 0.22, ease: "power1.in" }, 2.98);
+
+        /* ------------- Scene 2 — the plan flyer (3.2 – 7.4) -------------
+           The card is a physical object: it drops in and lands on the beat. */
+        // beat-locked: 4.23s (strongCue 1.00) — the flyer lands
+        tl.fromTo(
+          "#s2-card",
+          { y: 96, rotation: -3.2, opacity: 0 },
+          { y: 0, rotation: -1.2, opacity: 1, duration: 0.45, ease: EASE },
+          3.78,
+        );
+        // beat-grid: tag 1 at 4.75s, tag 2 at 5.28s, tag 3 at 5.80s
+        tl.fromTo("#s2-tags .s2-tag:nth-child(1)", { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: "back.out(2)" }, 4.75);
+        tl.fromTo("#s2-tags .s2-tag:nth-child(2)", { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: "back.out(2)" }, 5.28);
+        tl.fromTo("#s2-tags .s2-tag:nth-child(3)", { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: "back.out(2)" }, 5.8);
+        // beat-locked: 6.34s (strongCue 1.00) — "3 spots left" takes the eye
+        tl.fromTo("#s2-spots", { scale: 1 }, { scale: 1.16, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 }, 6.34);
+        tl.fromTo("#s2-wrap", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, 3.2);
+        tl.to("#s2-wrap", { opacity: 0, duration: 0.22, ease: "power1.in" }, 7.18);
+
+        /* ---------- Scene 3 — request to join (7.4 – 10.4) ---------- */
+        tl.fromTo("#s3-wrap", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "none" }, 7.4);
+        tl.fromTo("#s3-panel", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: EASE }, 7.45);
+        // the cursor travels to "One friend" and clicks it on the strong cue at 8.44s
+        tl.fromTo("#s3-cursor", { x: 1640, y: 900, opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 7.9);
+        tl.to("#s3-cursor", { x: 714, y: 457, duration: 0.5, ease: "power2.inOut" }, 7.94);
+        tl.to("#s3-cursor", { scale: 0.86, duration: 0.08, yoyo: true, repeat: 1, ease: "power2.out" }, 8.44);
+        tl.call(function () {
+          document.getElementById("s3-friend").classList.add("picked");
+        }, [], 8.44);
+        tl.fromTo("#s3-friend", { scale: 1 }, { scale: 1.07, duration: 0.12, yoyo: true, repeat: 1, ease: "power2.out" }, 8.44);
+        // the note types itself out, then holds long enough to read
+        tl.to("#s3-cursor", { x: 700, y: 620, duration: 0.16, ease: "power2.inOut" }, 8.5);
+        var NOTE = "With my flatmate.";
+        var typed = { n: 0 };
+        tl.to(
+          typed,
+          {
+            n: NOTE.length,
+            duration: 0.58,
+            ease: "none",
+            snap: { n: 1 },
+            onUpdate: function () {
+              document.getElementById("s3-typed").textContent = NOTE.slice(0, typed.n);
+            },
+          },
+          8.62,
+        );
+        // then the send button presses in, exactly like the app's :active state
+        tl.to("#s3-cursor", { x: 643, y: 732, duration: 0.42, ease: "power2.inOut" }, 9.5);
+        tl.fromTo("#s3-send", { x: 0, y: 0 }, { x: 3, y: 3, duration: 0.1, yoyo: true, repeat: 1, ease: "power2.out" }, 10.01);
+        tl.to("#s3-cursor", { scale: 0.86, duration: 0.08, yoyo: true, repeat: 1, ease: "power2.out" }, 10.01);
+        tl.to("#s3-wrap", { opacity: 0, duration: 0.2, ease: "power1.in" }, 10.2);
+
+        /* --------- Scene 4 — the host decides (10.4 – 15.4) --------- */
+        tl.fromTo("#s4-wrap", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, 10.4);
+        // beat-locked: 10.54s (strongCue 1.00) — the applicant card lands
+        tl.fromTo("#s4-desk", { y: 70, rotation: -1.4, opacity: 0 }, { y: 0, rotation: 0, opacity: 1, duration: 0.4, ease: EASE }, 10.14);
+        // beat-grid: reason 1 at 11.60s, reason 2 at 12.65s — every other beat, so each line can be read
+        tl.fromTo("#s4-r1", { x: -26, opacity: 0 }, { x: 0, opacity: 1, duration: 0.32, ease: "power3.out" }, 11.6);
+        tl.fromTo("#s4-r2", { x: -26, opacity: 0 }, { x: 0, opacity: 1, duration: 0.32, ease: "power3.out" }, 12.65);
+        // the cursor hits Accept on the beat at 13.18s
+        tl.fromTo("#s4-cursor", { x: 1300, y: 980, opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 12.7);
+        tl.to("#s4-cursor", { x: 715, y: 742, duration: 0.42, ease: "power2.inOut" }, 12.74);
+        tl.to("#s4-cursor", { scale: 0.86, duration: 0.08, yoyo: true, repeat: 1, ease: "power2.out" }, 13.18);
+        tl.fromTo("#s4-accept", { x: 0, y: 0 }, { x: 3, y: 3, duration: 0.1, yoyo: true, repeat: 1, ease: "power2.out" }, 13.18);
+        tl.to("#s4-cursor", { opacity: 0, duration: 0.12, ease: "none" }, 13.5);
+        tl.to("#s4-desk", { scale: 0.965, opacity: 0.42, duration: 0.3, ease: "power2.out" }, 13.95);
+        // beat-locked: 14.22s (strongCue 0.98) — the app's own stamp-in keyframe, to the value
+        tl.fromTo(
+          "#s4-stamp",
+          { opacity: 0, scale: 1.8, rotation: -8 },
+          { opacity: 1, scale: 0.94, rotation: 2, duration: 0.245, ease: "power2.out" },
+          14.22,
+        );
+        tl.to("#s4-stamp", { scale: 1, rotation: -2, duration: 0.105, ease: "power2.out" }, 14.465);
+        tl.to("#s4-wrap", { opacity: 0, duration: 0.2, ease: "power1.in" }, 15.2);
+
+        /* ---------- Scene 5 — the party room (15.4 – 19.0) ---------- */
+        tl.fromTo("#s5-wrap", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, 15.4);
+        tl.fromTo("#s5-kicker", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "none" }, 15.45);
+        tl.fromTo("#s5-h", { y: 54, opacity: 0 }, { y: 0, opacity: 1, duration: 0.42, ease: EASE }, 15.5);
+        // beat-grid: crew 1 at 15.81s, crew 2 at 16.86s, crew 3 at 17.91s — every other beat
+        tl.fromTo("#s5-c1", { y: 46, rotation: -1.6, opacity: 0 }, { y: 0, rotation: -0.8, opacity: 1, duration: 0.34, ease: "back.out(1.4)" }, 15.81);
+        tl.fromTo("#s5-c2", { y: 46, rotation: 1.6, opacity: 0 }, { y: 0, rotation: 0.7, opacity: 1, duration: 0.34, ease: "back.out(1.4)" }, 16.86);
+        tl.fromTo("#s5-c3", { y: 46, rotation: -1.2, opacity: 0 }, { y: 0, rotation: -0.5, opacity: 1, duration: 0.34, ease: "back.out(1.4)" }, 17.91);
+        tl.to("#s5-wrap", { opacity: 0, duration: 0.22, ease: "power1.in" }, 18.78);
+
+        /* ------------- Scene 6 — wordmark (19.0 – 22.0) ------------- */
+        tl.fromTo("#s6-wrap", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "none" }, 19);
+        tl.fromTo("#s6-mark", { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "back.out(1.3)" }, 19.2);
+        tl.fromTo("#s6-tag", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power3.out" }, 19.62);
+        tl.fromTo(
+          "#s6-sticker",
+          { scale: 0.6, rotation: 14, opacity: 0 },
+          { scale: 1, rotation: -6, opacity: 1, duration: 0.4, ease: "back.out(1.8)" },
+          20.1,
+        );
+
+        /* ---- Audio-reactive: the paper's warmth and the cards' offset
+           shadow breathe with the bed. Sampled per frame, no visualizers. ---- */
+        var A = window.AUDIO_DATA;
+        if (A && A.frames && A.frames.length) {
+          for (var f = 0; f < A.frames.length; f++) {
+            tl.call(
+              (function (frame) {
+                return function () {
+                  root.style.setProperty("--hf-rms", frame.rms.toFixed(3));
+                  root.style.setProperty("--hf-bass", frame.bands[0].toFixed(3));
+                };
+              })(A.frames[f]),
+              [],
+              f / A.fps,
+            );
+          }
+        }
+
+        window.__timelines["main"] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

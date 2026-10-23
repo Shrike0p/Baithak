@@ -71,6 +71,9 @@ export interface HappenedPlan {
 
 export interface PlanDetail extends Omit<PlanSummary, "confirmedCount"> {
   exactAddress: string | null;
+  /** Screening question ids the host chose, in their order. */
+  rsvpQuestions: string[];
+  houseRules: string | null;
   isHost: boolean;
   viewerSignedIn: boolean;
   status: string;
@@ -222,6 +225,9 @@ export interface Applicant {
   status: "PENDING" | "ACCEPTED" | "PASSED" | "REVIEW_LATER";
   bringingWith: "SOLO" | "ONE_FRIEND" | "GROUP";
   note: string | null;
+  /** The host's screening questions, already resolved to labels. */
+  answers?: { id: string; label: string; value: string }[];
+  agreedAt?: string | null;
   createdAt: string;
   score: number;
   reasons: string[];
@@ -402,6 +408,11 @@ export function createPlan(data: {
   capacity: number;
   vibeTags: string[];
   imageUrl?: string;
+  /** Profile steps this host demands before anyone may apply. */
+  requiredOfGuests?: string[];
+  /** Screening question ids from the shared catalogue, in the host's order. */
+  rsvpQuestions?: string[];
+  houseRules?: string;
   crowd?: {
     ageMin: number;
     ageMax: number;
@@ -420,7 +431,14 @@ export function createPlan(data: {
 
 export function applyToPlan(
   id: string,
-  data: { bringingWith: "SOLO" | "ONE_FRIEND" | "GROUP"; note?: string }
+  data: {
+    bringingWith: "SOLO" | "ONE_FRIEND" | "GROUP";
+    note?: string;
+    /** Keyed by RSVP question id; a multi-choice answer is an array. */
+    answers?: Record<string, string | string[]>;
+    /** True once the guest ticks the host's house rules. */
+    agreed?: boolean;
+  }
 ) {
   return apiFetch(`/api/plans/${id}/applications`, {
     method: "POST",

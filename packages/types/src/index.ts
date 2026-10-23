@@ -24,5 +24,7 @@ export interface TrustSignal {
   plansHosted: number;
   mutualConnections: number;
 }
+export * from "./areas";
+export * from "./rsvp";
 export * from "./profile";
 export * from "./trust";

@@ -23,6 +23,9 @@ export function PlanCard({
   href?: string;
 }) {
   const art = planArt(plan.category, plan.imageUrl);
+  // "3 spots left" does work that "9 / 12 people" doesn't — it's the same fact,
+  // but only one of them tells you to decide now.
+  const spotsLeft = plan.capacity - plan.confirmedCount;
 
   return (
     <Link href={href ?? `/plans/${plan.id}`} className="block">
@@ -63,8 +66,12 @@ export function PlanCard({
 
           <div className="mt-auto pt-6">
             <div className="flex items-center justify-between border-y-2 border-foreground py-2 font-mono text-xs font-bold">
-              <span>
-                {plan.confirmedCount} / {plan.capacity} people
+              <span className={spotsLeft > 0 && spotsLeft <= 3 ? "text-primary" : undefined}>
+                {spotsLeft <= 0
+                  ? "Full"
+                  : spotsLeft <= 3
+                    ? `${spotsLeft} ${spotsLeft === 1 ? "spot" : "spots"} left`
+                    : `${plan.confirmedCount} / ${plan.capacity} people`}
               </span>
               <span>
                 Host · {plan.host.name} ★ {plan.host.trustScore.toFixed(1)}

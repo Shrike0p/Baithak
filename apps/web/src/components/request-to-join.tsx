@@ -6,6 +6,7 @@ import { applyToPlan, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui";
 import { useSound } from "@/lib/use-sound";
 import { CompleteProfileStep } from "@/components/complete-profile-step";
+import { rsvpQuestion } from "@baithak/types";
 
 const BRINGING_OPTIONS = [
   { value: "SOLO", label: "Solo" },
@@ -15,9 +16,38 @@ const BRINGING_OPTIONS = [
 
 type Bringing = (typeof BRINGING_OPTIONS)[number]["value"];
 
-export function RequestToJoin({ planId }: { planId: string }) {
+export function RequestToJoin({
+  planId,
+  questions = [],
+  houseRules,
+}: {
+  planId: string;
+  /** Screening question ids this host chose, in their order. */
+  questions?: string[];
+  houseRules?: string | null;
+}) {
   const [bringingWith, setBringingWith] = useState<Bringing>("SOLO");
   const [note, setNote] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const [agreed, setAgreed] = useState(false);
+
+  const asked = questions.map(rsvpQuestion).filter((q) => q !== undefined);
+  const unanswered = asked.filter((q) => {
+    const a = answers[q.id];
+    return Array.isArray(a) ? a.length === 0 : !a;
+  });
+  const blocked = unanswered.length > 0 || (Boolean(houseRules) && !agreed);
+
+  function pick(id: string, value: string, multi: boolean, max: number) {
+    setAnswers((prev) => {
+      if (!multi) return { ...prev, [id]: value };
+      const current = Array.isArray(prev[id]) ? (prev[id] as string[]) : [];
+      if (current.includes(value)) return { ...prev, [id]: current.filter((v) => v !== value) };
+      // Silently ignoring the tap past the limit reads as broken — drop the
+      // oldest instead, so the last thing tapped is always the thing selected.
+      return { ...prev, [id]: [...current, value].slice(-max) };
+    });
+  }
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [missing, setMissing] = useState<string[] | null>(null);
   const { play } = useSound();
@@ -25,7 +55,12 @@ export function RequestToJoin({ planId }: { planId: string }) {
   async function submit() {
     setStatus("sending");
     try {
-      await applyToPlan(planId, { bringingWith, note: note || undefined });
+      await applyToPlan(planId, {
+        bringingWith,
+        note: note || undefined,
+        answers,
+        agreed: houseRules ? agreed : undefined,
+      });
       setStatus("sent");
       setMissing(null);
       play("stamp");
@@ -89,6 +124,64 @@ export function RequestToJoin({ planId }: { planId: string }) {
         </div>
       </div>
 
+      {asked.map((q) => {
+        const value = answers[q.id];
+        const multi = q.kind === "multi";
+        return (
+          <div key={q.id}>
+            <p className="meta-label text-muted-foreground">
+              {q.label}
+              {multi && <span className="ml-1 normal-case">(pick up to {q.maxChoices ?? 2})</span>}
+            </p>
+            {q.kind === "text" ? (
+              <textarea
+                value={typeof value === "string" ? value : ""}
+                maxLength={300}
+                rows={2}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                className="mt-2 w-full rounded-sm border-2 border-foreground bg-background p-3 text-sm outline-none focus:shadow-stamp-sm"
+              />
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(q.options ?? []).map((opt) => {
+                  const on = Array.isArray(value) ? value.includes(opt) : value === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => pick(q.id, opt, multi, q.maxChoices ?? 2)}
+                      className={`rounded-sm border-2 border-foreground px-3 py-1.5 text-sm font-bold transition-transform duration-150 active:translate-x-0.5 active:translate-y-0.5 ${
+                        on
+                          ? "bg-foreground text-background shadow-stamp-sm"
+                          : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {houseRules && (
+        <div className="border-2 border-foreground bg-muted p-4">
+          <p className="meta-label text-muted-foreground">House rules</p>
+          <p className="mt-2 whitespace-pre-line text-sm">{houseRules}</p>
+          <label className="mt-3 flex items-start gap-2 text-sm font-bold">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5"
+            />
+            I&apos;ve read these and I&apos;m good with them.
+          </label>
+        </div>
+      )}
+
       <div>
         <p className="meta-label text-muted-foreground">Optional note</p>
         <textarea
@@ -108,7 +201,7 @@ export function RequestToJoin({ planId }: { planId: string }) {
         <p className="meta-label text-primary">Something went wrong — try again</p>
       )}
 
-      <Button type="submit" disabled={status === "sending"} className="w-full">
+      <Button type="submit" disabled={status === "sending" || blocked} className="w-full">
         {status === "sending" ? "Sending…" : "Request to join"}
       </Button>
     </form>

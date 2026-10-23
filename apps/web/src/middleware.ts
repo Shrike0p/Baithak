@@ -15,7 +15,11 @@ function isPublicPlan(pathname: string): boolean {
   return (
     parts.length === 2 ||
     (parts.length === 3 &&
-      (parts[2].startsWith("opengraph-image") || parts[2].startsWith("twitter-image")))
+      (parts[2].startsWith("opengraph-image") ||
+        parts[2].startsWith("twitter-image") ||
+        // The poster carries exactly what the ticket does. Gating it would only
+        // break the preview on a page that is itself public.
+        parts[2] === "poster"))
   );
 }
 

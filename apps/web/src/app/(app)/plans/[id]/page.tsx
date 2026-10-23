@@ -94,7 +94,7 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
         {plan.isHost && <CoverPicker planId={plan.id} />}
         <div className="absolute bottom-6 left-5 text-background md:left-10">
           <Pill tone="orange">{formatWhen(plan.startsAt)}</Pill>
-          <h1 className="mt-4 text-5xl uppercase leading-none md:text-7xl">{plan.title}</h1>
+          <h1 className="mt-4 text-5xl uppercase leading-none md:text-7xl truncate max-w-xs md:max-w-6xl">{plan.title}</h1>
           <p className="mt-3 flex items-center gap-2 font-mono text-sm font-bold">
             <MapPin className="size-4" /> {plan.neighborhood}
             {!plan.exactAddress && " · exact address after approval"}
@@ -291,7 +291,11 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
             <PaperCard className="p-5">
               <h2 className="text-2xl uppercase">Want in?</h2>
               <div className="mt-4">
-                <RequestToJoin planId={plan.id} />
+                <RequestToJoin
+                  planId={plan.id}
+                  questions={plan.rsvpQuestions}
+                  houseRules={plan.houseRules}
+                />
               </div>
             </PaperCard>
           )}

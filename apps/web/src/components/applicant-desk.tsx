@@ -152,6 +152,27 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
               </div>
             )}
 
+            {selected.answers && selected.answers.length > 0 && (
+              <div className="paper-card mt-6 p-4">
+                <p className="meta-label text-primary">What you asked</p>
+                <dl className="mt-3 space-y-3">
+                  {selected.answers.map((a) => (
+                    <div key={a.id}>
+                      <dt className="font-mono text-xs font-bold uppercase text-muted-foreground">
+                        {a.label}
+                      </dt>
+                      <dd className="mt-0.5 font-bold">{a.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {selected.agreedAt && (
+                  <p className="mt-4 font-mono text-xs font-bold uppercase text-accent">
+                    ✓ Agreed to your house rules
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="mt-8 border-y-2 border-foreground py-6">
               <h3 className="text-xl uppercase">Why they might fit</h3>
               <ul className="mt-4 space-y-2 font-medium">

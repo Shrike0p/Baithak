@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, type PlanCategory, type ConnectionPreference } from "@baithak/db";
+import {
+  LAUNCH_AREAS,
+  isLaunchArea,
+  HOST_REQUIRABLE,
+  MAX_RSVP_QUESTIONS,
+  rsvpQuestion,
+} from "@baithak/types";
 import { getCurrentUserId } from "@/lib/current-user";
 import { hiddenUserIds } from "@/lib/blocks";
 
@@ -43,6 +50,14 @@ export async function POST(request: NextRequest) {
     ? body.vibeTags.filter((t: unknown): t is string => typeof t === "string")
     : [];
 
+  // Liquidity is per-area. An open text field spreads ten parties across the
+  // whole city and every one of them looks dead.
+  if (!isLaunchArea(neighborhood)) {
+    return NextResponse.json(
+      { error: `we're only open in ${LAUNCH_AREAS.join(", ")} right now` },
+      { status: 400 },
+    );
+  }
   if (!title || !neighborhood || !exactAddress) {
     return NextResponse.json(
       { error: "title, neighborhood and exact address are required" },
@@ -74,9 +89,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Only the optional steps are a host's to demand; the baseline is ours, and
+  // an unknown key would silently gate on something that can never be filled.
+  const requiredOfGuests: string[] = Array.isArray(body.requiredOfGuests)
+    ? body.requiredOfGuests.filter((k: unknown): k is string =>
+        HOST_REQUIRABLE.includes(k as never),
+      )
+    : [];
+
+  // Unknown ids are dropped rather than rejected — the catalogue can lose a
+  // question and old clients shouldn't start failing to create plans.
+  const rsvpQuestions: string[] = (Array.isArray(body.rsvpQuestions) ? body.rsvpQuestions : [])
+    .filter((id: unknown): id is string => typeof id === "string" && Boolean(rsvpQuestion(id)))
+    .slice(0, MAX_RSVP_QUESTIONS);
+
+  const houseRules =
+    typeof body.houseRules === "string" && body.houseRules.trim()
+      ? body.houseRules.trim().slice(0, 1000)
+      : null;
+
   const plan = await prisma.plan.create({
     data: {
       hostId,
+      requiredOfGuests,
+      rsvpQuestions,
+      houseRules,
       title,
       category,
       vibeTags,

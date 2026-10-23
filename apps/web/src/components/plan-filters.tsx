@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { PlanSummary } from "@/lib/api";
 import { PlanCard } from "@/components/plan-card";
 import { PaperCard } from "@/components/ui";
+import { LAUNCH_AREAS } from "@baithak/types";
 
 /**
  * When a plan is, as a filter rather than a stack of sections.
@@ -59,20 +60,61 @@ const FILTERS: { key: Key; label: string }[] = [
 
 export function PlanFilters({ plans }: { plans: PlanSummary[] }) {
   const [active, setActive] = useState<Key>("all");
+  // Area sits alongside the time window rather than replacing it: "this weekend
+  // in HSR" is the actual question, and either half alone is the wrong answer.
+  const [area, setArea] = useState<string>("all");
+
+  const inArea = useMemo(
+    () => (area === "all" ? plans : plans.filter((p) => p.neighborhood === area)),
+    [plans, area],
+  );
 
   const counts = useMemo(
     () =>
       Object.fromEntries(
-        FILTERS.map((f) => [f.key, plans.filter((p) => matches(p, f.key)).length]),
+        FILTERS.map((f) => [f.key, inArea.filter((p) => matches(p, f.key)).length]),
       ) as Record<Key, number>,
+    [inArea],
+  );
+
+  const areaCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        LAUNCH_AREAS.map((a) => [a, plans.filter((p) => p.neighborhood === a).length]),
+      ) as Record<string, number>,
     [plans],
   );
 
-  const shown = plans.filter((p) => matches(p, active));
+  const shown = inArea.filter((p) => matches(p, active));
   const [first, ...rest] = shown;
 
   return (
     <div>
+      <div className="hide-scrollbar mb-3 flex gap-2 overflow-x-auto pb-1">
+        {[{ key: "all", label: "Everywhere" }, ...LAUNCH_AREAS.map((a) => ({ key: a, label: a }))].map(
+          (a) => (
+            <button
+              key={a.key}
+              type="button"
+              onClick={() => setArea(a.key)}
+              aria-pressed={area === a.key}
+              className={`inline-flex shrink-0 items-center gap-2 border-2 border-foreground px-4 py-2 font-mono text-xs font-bold uppercase transition-transform active:translate-x-0.5 active:translate-y-0.5 ${
+                area === a.key
+                  ? "bg-accent text-accent-foreground shadow-stamp-sm"
+                  : "bg-card hover:bg-muted"
+              }`}
+            >
+              {a.label}
+              {a.key !== "all" && (
+                <span className={area === a.key ? "opacity-80" : "text-muted-foreground"}>
+                  {areaCounts[a.key] ?? 0}
+                </span>
+              )}
+            </button>
+          ),
+        )}
+      </div>
+
       <div className="hide-scrollbar mb-8 flex gap-2 overflow-x-auto pb-1">
         {FILTERS.map((f) => (
           <button
@@ -96,9 +138,13 @@ export function PlanFilters({ plans }: { plans: PlanSummary[] }) {
 
       {shown.length === 0 ? (
         <PaperCard className="p-12 text-center">
-          <h2 className="text-3xl uppercase">Nothing in that window.</h2>
+          <h2 className="text-3xl uppercase">
+            {area === "all" ? "Nothing in that window." : `Nothing in ${area} yet.`}
+          </h2>
           <p className="mt-3 text-muted-foreground">
-            Try a wider one — or make the plan yourself.
+            {area === "all"
+              ? "Try a wider one — or make the plan yourself."
+              : "Try everywhere, a wider window — or be the first to host here."}
           </p>
         </PaperCard>
       ) : (

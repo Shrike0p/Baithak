@@ -3,7 +3,7 @@ import { prisma } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
 import { scoreApplicant, bucketFor } from "@/lib/matching";
 import { composeCrew, groupHealth } from "@/lib/composition";
-import { profileStrength } from "@baithak/types";
+import { profileStrength, rsvpQuestion } from "@baithak/types";
 import { describeSocial } from "@/lib/social";
 import { notify } from "@/lib/notify";
 
@@ -89,6 +89,17 @@ export async function GET(
       status: app.status,
       bringingWith: app.bringingWith,
       note: app.note,
+      // Resolved to labels here rather than in the desk: the host should read
+      // "How are you getting home? — Cab or rideshare", not a pair of ids.
+      answers: Object.entries((app.answers ?? {}) as Record<string, string | string[]>)
+        .map(([id, value]) => {
+          const q = rsvpQuestion(id);
+          return q
+            ? { id, label: q.label, value: Array.isArray(value) ? value.join(", ") : value }
+            : null;
+        })
+        .filter((a) => a !== null),
+      agreedAt: app.agreedAt,
       createdAt: app.createdAt,
       score,
       reasons,
@@ -144,16 +155,24 @@ export async function POST(
   // A blank profile arrives in the host's queue with nothing to judge, gets
   // passed on, and the applicant never learns why. Better to stop it here and
   // say what's missing.
-  const applicant = await prisma.user.findUnique({
-    where: { id: applicantId },
-    select: { name: true, age: true, city: true, occupation: true, bio: true, socialUrl: true, vibeTags: true },
-  });
-  const strength = applicant ? profileStrength(applicant) : null;
+  const [applicant, gate] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: applicantId },
+      select: { name: true, age: true, city: true, occupation: true, bio: true, socialUrl: true, vibeTags: true },
+    }),
+    prisma.plan.findUnique({
+      where: { id: planId },
+      select: { requiredOfGuests: true, rsvpQuestions: true, houseRules: true },
+    }),
+  ]);
+  const strength = applicant ? profileStrength(applicant, gate?.requiredOfGuests ?? []) : null;
   if (!strength?.canApply) {
     return NextResponse.json(
       {
         error: "profile incomplete",
-        message: "Hosts need to know who they'd be letting in.",
+        message: (gate?.requiredOfGuests.length ?? 0)
+          ? "This host asks for a bit more before they'll consider you."
+          : "Hosts need to know who they'd be letting in.",
         missing: strength?.missingRequired.map((s) => s.key) ?? ["basics", "vibe"],
       },
       { status: 422 }
@@ -165,10 +184,54 @@ export async function POST(
   const bringingWith = body.bringingWith ?? "SOLO";
   const note = typeof body.note === "string" ? body.note : null;
 
+  // House rules are a norm, not decoration — an unticked box is a refusal.
+  if (gate?.houseRules && body.agreed !== true) {
+    return NextResponse.json(
+      { error: "house rules", message: "Tick the house rules to send this." },
+      { status: 422 },
+    );
+  }
+
+  // Keep only answers to questions this host actually asked, so a client can't
+  // stuff arbitrary text onto an application.
+  const asked = gate?.rsvpQuestions ?? [];
+  const submitted = (body.answers ?? {}) as Record<string, unknown>;
+  const answers: Record<string, string | string[]> = {};
+  const unanswered: string[] = [];
+  for (const id of asked) {
+    const q = rsvpQuestion(id);
+    if (!q) continue;
+    const value = submitted[id];
+    if (q.kind === "multi") {
+      const picked = Array.isArray(value)
+        ? value.filter((v): v is string => typeof v === "string").slice(0, q.maxChoices ?? 2)
+        : [];
+      if (picked.length === 0) unanswered.push(id);
+      else answers[id] = picked;
+    } else {
+      const text = typeof value === "string" ? value.trim().slice(0, 300) : "";
+      if (!text) unanswered.push(id);
+      else answers[id] = text;
+    }
+  }
+  if (unanswered.length > 0) {
+    return NextResponse.json(
+      { error: "unanswered", message: "The host asked a couple of things first.", unanswered },
+      { status: 422 },
+    );
+  }
+
   const application = await prisma.application.upsert({
     where: { planId_applicantId: { planId, applicantId } },
-    update: { bringingWith, note },
-    create: { planId, applicantId, bringingWith, note },
+    update: { bringingWith, note, answers, agreedAt: gate?.houseRules ? new Date() : null },
+    create: {
+      planId,
+      applicantId,
+      bringingWith,
+      note,
+      answers,
+      agreedAt: gate?.houseRules ? new Date() : null,
+    },
   });
 
   const plan = await prisma.plan.findUnique({

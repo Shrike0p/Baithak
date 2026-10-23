@@ -88,8 +88,24 @@ export interface ProfileStrength {
   hostView: { tone: "thin" | "workable" | "strong"; message: string };
 }
 
-export function profileStrength(user: ProfileInput): ProfileStrength {
-  const steps = profileSteps(user);
+/** The steps a host is allowed to demand on top of the baseline. */
+export const HOST_REQUIRABLE: ProfileStep["key"][] = ["social", "occupation", "bio"];
+
+/**
+ * Profile strength, optionally judged against one host's bar.
+ *
+ * `demanded` are step keys this host insists on for their own plan. They're
+ * folded into `required` rather than checked separately so the gate, the meter
+ * and the "what's missing" list can't drift apart — the whole reason this lives
+ * in a shared package.
+ */
+export function profileStrength(
+  user: ProfileInput,
+  demanded: readonly string[] = [],
+): ProfileStrength {
+  const steps = profileSteps(user).map((step) =>
+    demanded.includes(step.key) ? { ...step, required: true } : step,
+  );
   const percent = steps.reduce((sum, s) => sum + (s.done ? s.weight : 0), 0);
   const missingRequired = steps.filter((s) => s.required && !s.done);
   const remaining = steps.filter((s) => !s.done);
