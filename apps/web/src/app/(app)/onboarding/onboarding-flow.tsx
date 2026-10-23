@@ -101,11 +101,17 @@ export function OnboardingFlow({ next }: { next?: string }) {
               key={o}
               type="button"
               onClick={() => toggle(o)}
-              className={`rounded-sm border-2 border-foreground px-5 py-3 font-bold shadow-stamp-sm transition-transform hover:-translate-y-1 active:translate-x-0.5 active:translate-y-0.5 ${
+              className={`relative rounded-sm border-2 border-foreground px-5 py-3 font-bold shadow-stamp-sm transition-transform hover:-translate-y-1 active:translate-x-0.5 active:translate-y-0.5 ${
                 picked.includes(o) ? "bg-primary text-primary-foreground" : "bg-card"
               }`}
             >
-              {picked.includes(o) && <Check className="mr-2 inline size-4" />}
+              {/* A corner badge, not an inline icon: anything that changes the
+                  chip's width reflows the whole wrapped row on every tap. */}
+              {picked.includes(o) && (
+                <span className="absolute -right-2 -top-2 grid size-5 place-items-center rounded-full border-2 border-foreground bg-background text-foreground">
+                  <Check className="size-3" strokeWidth={3} />
+                </span>
+              )}
               {o}
             </button>
           ))}
@@ -165,9 +171,15 @@ export function OnboardingFlow({ next }: { next?: string }) {
         </div>
       )}
 
-      {(blocked || error) && (
-        <p className="mt-8 border-2 border-foreground bg-primary/15 p-3 text-sm font-bold">
-          {error || blocked}
+      {/* On the pick steps the hint keeps its space once satisfied, so the
+          buttons below don't jump up the moment the first chip is tapped. */}
+      {(blocked || error || step < 3) && (
+        <p
+          className={`mt-8 border-2 border-foreground bg-primary/15 p-3 text-sm font-bold ${
+            blocked || error ? "" : "invisible"
+          }`}
+        >
+          {error || blocked || (step === 1 ? "Pick at least one." : "Pick at least two in total — one more gets you matched.")}
         </p>
       )}
 
