@@ -27,6 +27,8 @@ export interface PlanSummary {
   vibeTags: string[];
   neighborhood: string;
   imageUrl: string | null;
+  /** Per-guest chip-in in whole rupees; null/absent = free. */
+  chipIn?: number | null;
   startsAt: string;
   capacity: number;
   confirmedCount: number;
@@ -74,6 +76,14 @@ export interface PlanDetail extends Omit<PlanSummary, "confirmedCount"> {
   /** Screening question ids the host chose, in their order. */
   rsvpQuestions: string[];
   houseRules: string | null;
+  chipInNote: string | null;
+  /** The join form asks for a number when this is on. */
+  askPhone: boolean;
+  /** The viewer's own request, if they've made one. */
+  myRequest: "PENDING" | "REVIEW_LATER" | "ACCEPTED" | "PASSED" | null;
+  /** Accepted guests on a chip-in plan only. */
+  upiId?: string | null;
+  myPayment?: { paidClaimedAt: string | null; paidConfirmedAt: string | null } | null;
   /** Profile steps this host demands on top of the baseline. */
   requiredOfGuests: string[];
   isHost: boolean;
@@ -185,6 +195,11 @@ export interface PartyRoom {
   capacity: number;
   status: string;
   imageUrl: string | null;
+  chipIn: number | null;
+  chipInNote: string | null;
+  upiId: string | null;
+  /** Guests only, when there's a chip-in. */
+  myPayment: { paidClaimedAt: string | null; paidConfirmedAt: string | null } | null;
   host: { id: string; name: string; image: string | null; bio: string | null; trustScore: number };
   isHost: boolean;
   composition: Composition;
@@ -201,6 +216,8 @@ export interface PartyRoom {
       occupation: string | null;
       vibeTags: string[];
       trustScore: number;
+      /** Host's view only — the number this guest gave when they asked. */
+      phone: string | null;
       plansAttended: number;
       sharedVibes: string[];
     };
@@ -230,6 +247,13 @@ export interface Applicant {
   /** The host's screening questions, already resolved to labels. */
   answers?: { id: string; label: string; value: string }[];
   agreedAt?: string | null;
+  /** Only once accepted; until then the desk just knows one was given. */
+  phone: string | null;
+  phoneGiven: boolean;
+  /** The guest says they sent the chip-in. */
+  paidClaimedAt: string | null;
+  /** The host has confirmed it arrived. */
+  paidConfirmedAt: string | null;
   createdAt: string;
   score: number;
   reasons: string[];
@@ -261,6 +285,7 @@ export interface ApplicantQueue {
     capacity: number;
     imageUrl: string | null;
     vibeTags: string[];
+    chipIn: number | null;
   };
   composition: Composition;
   groupHealth: string[];
@@ -371,6 +396,25 @@ export function decideApplication(
   });
 }
 
+/** Host: the chip-in arrived (or, undoing a mis-tap, it didn't). */
+export function confirmChipIn(applicationId: string, paid: boolean) {
+  return apiFetch(`/api/applications/${applicationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paid }),
+  });
+}
+
+/** Guest: "I've sent it." A claim the host then confirms. */
+export function claimChipIn(planId: string) {
+  return apiFetch(`/api/plans/${planId}/payment`, { method: "POST" });
+}
+
+/** Guest: undo a mis-tapped "I've paid", until the host confirms. */
+export function unclaimChipIn(planId: string) {
+  return apiFetch(`/api/plans/${planId}/payment`, { method: "DELETE" });
+}
+
 export interface Me {
   id: string;
   name: string;
@@ -415,6 +459,12 @@ export function createPlan(data: {
   /** Screening question ids from the shared catalogue, in the host's order. */
   rsvpQuestions?: string[];
   houseRules?: string;
+  /** Whole rupees per guest; omit for a free plan. */
+  chipIn?: number;
+  chipInNote?: string;
+  /** Where guests pay the chip-in; only shown inside the party room. */
+  upiId?: string;
+  askPhone?: boolean;
   crowd?: {
     ageMin: number;
     ageMax: number;
@@ -440,6 +490,8 @@ export function applyToPlan(
     answers?: Record<string, string | string[]>;
     /** True once the guest ticks the host's house rules. */
     agreed?: boolean;
+    /** Only sent when the host asked for one. */
+    phone?: string;
   }
 ) {
   return apiFetch(`/api/plans/${id}/applications`, {

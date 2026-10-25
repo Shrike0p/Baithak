@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, type PlanCategory, type ConnectionPreference } from "@baithak/db";
 import {
-  LAUNCH_AREAS,
-  isLaunchArea,
+  normalizeArea,
+  parseChipIn,
+  normalizeUpiId,
+  MAX_CHIP_IN,
+  MAX_CHIP_IN_NOTE,
   HOST_REQUIRABLE,
   MAX_RSVP_QUESTIONS,
   rsvpQuestion,
@@ -41,7 +44,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
-  const neighborhood = typeof body.neighborhood === "string" ? body.neighborhood.trim() : "";
+  const neighborhood = normalizeArea(body.neighborhood);
   const exactAddress = typeof body.exactAddress === "string" ? body.exactAddress.trim() : "";
   const startsAt = new Date(body.startsAt);
   const capacity = Number(body.capacity);
@@ -50,14 +53,6 @@ export async function POST(request: NextRequest) {
     ? body.vibeTags.filter((t: unknown): t is string => typeof t === "string")
     : [];
 
-  // Liquidity is per-area. An open text field spreads ten parties across the
-  // whole city and every one of them looks dead.
-  if (!isLaunchArea(neighborhood)) {
-    return NextResponse.json(
-      { error: `we're only open in ${LAUNCH_AREAS.join(", ")} right now` },
-      { status: 400 },
-    );
-  }
   if (!title || !neighborhood || !exactAddress) {
     return NextResponse.json(
       { error: "title, neighborhood and exact address are required" },
@@ -103,6 +98,29 @@ export async function POST(request: NextRequest) {
     .filter((id: unknown): id is string => typeof id === "string" && Boolean(rsvpQuestion(id)))
     .slice(0, MAX_RSVP_QUESTIONS);
 
+  // A typo'd amount must not silently become a free party — refuse it instead.
+  const chipIn = parseChipIn(body.chipIn);
+  if (chipIn === null && body.chipIn != null && body.chipIn !== "" && Number(body.chipIn) !== 0) {
+    return NextResponse.json(
+      { error: `the chip-in has to be a whole amount up to ₹${MAX_CHIP_IN}` },
+      { status: 400 },
+    );
+  }
+  const chipInNote =
+    chipIn && typeof body.chipInNote === "string" && body.chipInNote.trim()
+      ? body.chipInNote.trim().slice(0, MAX_CHIP_IN_NOTE)
+      : null;
+
+  // A chip-in without a way to pay it leaves guests asking around, so the
+  // UPI ID is required with one — and a bad one is refused, not dropped.
+  const upiId = chipIn ? normalizeUpiId(body.upiId) : null;
+  if (chipIn && !upiId) {
+    return NextResponse.json(
+      { error: "add your UPI ID (like name@bank) so guests can pay the chip-in" },
+      { status: 400 },
+    );
+  }
+
   const houseRules =
     typeof body.houseRules === "string" && body.houseRules.trim()
       ? body.houseRules.trim().slice(0, 1000)
@@ -114,6 +132,11 @@ export async function POST(request: NextRequest) {
       requiredOfGuests,
       rsvpQuestions,
       houseRules,
+      chipIn,
+      chipInNote,
+      upiId,
+      // Money changing hands means the host has to be able to reach people.
+      askPhone: body.askPhone === true || Boolean(chipIn),
       title,
       category,
       vibeTags,
@@ -174,6 +197,7 @@ export async function GET(request: NextRequest) {
       vibeTags: plan.vibeTags,
       neighborhood: plan.neighborhood,
       imageUrl: plan.imageUrl,
+      chipIn: plan.chipIn,
       startsAt: plan.startsAt,
       capacity: plan.capacity,
       confirmedCount: plan._count.attendees,

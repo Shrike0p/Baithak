@@ -1,15 +1,25 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from "react";
-import { Check, ChevronRight, Copy, ImagePlus, LockKeyhole, Share2 } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Check, ChevronRight, Copy, Eye, ImagePlus, LockKeyhole, Share2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { createPlan } from "@/lib/api";
+import { createPlan, getMe, type PlanSummary } from "@/lib/api";
+import { PlanCard } from "@/components/plan-card";
+import { DateTimePicker } from "@/components/date-time-picker";
+import { RetroSelect, type RetroOption } from "@/components/retro-select";
 import { uploadImage } from "@/lib/upload";
 import { COVER_PRESETS } from "@/lib/plan-art";
 import { useSound } from "@/lib/use-sound";
 import {
   LAUNCH_AREAS,
+  MAX_AREA_LENGTH,
+  normalizeArea,
+  parseChipIn,
+  normalizeUpiId,
+  chipInLabel,
+  MAX_CHIP_IN,
+  MAX_CHIP_IN_NOTE,
   profileSteps,
   HOST_REQUIRABLE,
   RSVP_QUESTIONS,
@@ -19,14 +29,14 @@ import {
 import { Button, Pill } from "@/components/ui";
 
 const CATEGORIES = [
-  { value: "HOUSE_PARTY", label: "House Party" },
-  { value: "DRINKS", label: "Drinks" },
-  { value: "DINNER", label: "Dinner" },
-  { value: "GAME_NIGHT", label: "Game Night" },
-  { value: "MOVIE", label: "Screening" },
-  { value: "SPORTS", label: "Sports" },
-  { value: "TRIP", label: "Trip" },
-  { value: "OTHER", label: "Other" },
+  { value: "HOUSE_PARTY", label: "House Party", emoji: "🪩" },
+  { value: "DRINKS", label: "Drinks", emoji: "🍻" },
+  { value: "DINNER", label: "Dinner", emoji: "🍝" },
+  { value: "GAME_NIGHT", label: "Game Night", emoji: "🎲" },
+  { value: "MOVIE", label: "Screening", emoji: "🍿" },
+  { value: "SPORTS", label: "Sports", emoji: "🏸" },
+  { value: "TRIP", label: "Trip", emoji: "🎒" },
+  { value: "OTHER", label: "Other", emoji: "✨" },
 ];
 
 const CAPACITIES = [8, 12, 16];
@@ -71,12 +81,14 @@ function PlanCreated({
   neighborhood,
   startsAt,
   capacity,
+  chipIn,
 }: {
   planId: string;
   title: string;
   neighborhood: string;
   startsAt: string;
   capacity: number;
+  chipIn: number | null;
 }) {
   const [copied, setCopied] = useState<"link" | "message" | null>(null);
   const [sending, setSending] = useState(false);
@@ -93,7 +105,7 @@ function PlanCreated({
   // window isn't there on the server, and this screen only ever renders after a
   // click, so building the URL at render time is safe.
   const url = typeof window === "undefined" ? "" : `${window.location.origin}/plans/${planId}`;
-  const message = `${title} — ${neighborhood}, ${when}. ${capacity} spots.\nAsk to come: ${url}`;
+  const message = `${title} — ${neighborhood}, ${when}. ${capacity} spots${chipIn ? `, ${chipInLabel(chipIn)}` : ""}.\nAsk to come: ${url}`;
 
   async function copy(what: "link" | "message") {
     try {
@@ -281,12 +293,14 @@ function PlanCreated({
   );
 }
 
-const CONNECTION_LABELS = {
-  OPEN: "Open to new people",
-  FRIENDS_OF_FRIENDS: "Friends of friends",
-  COMMUNITY: "Community members",
-  INVITE_ONLY: "Invite only",
-};
+// Stored as the host's preference only — nothing filters on it yet, so the
+// hints describe intent and never promise enforcement.
+const CONNECTION_OPTIONS: RetroOption[] = [
+  { value: "OPEN", label: "Open to new people", hint: "Strangers welcome — the whole point" },
+  { value: "FRIENDS_OF_FRIENDS", label: "Friends of friends", hint: "You'd rather people with a mutual" },
+  { value: "COMMUNITY", label: "Community members", hint: "You'd rather Baithak regulars" },
+  { value: "INVITE_ONLY", label: "Invite only", hint: "Mostly people you send the link to" },
+];
 
 /**
  * One collapsed setting, showing its current value on the closed row.
@@ -359,7 +373,23 @@ function Chip({
   );
 }
 
+const STEPS = ["The basics", "Place & look", "Who comes"] as const;
+
+/** The real Discover card, fed the form's current values. */
+function Preview({ plan }: { plan: PlanSummary }) {
+  return (
+    <div>
+      <p className="meta-label text-muted-foreground">How it looks in Discover</p>
+      {/* inert: it's a picture of the card, not a link to a plan that doesn't exist yet. */}
+      <div inert className="mt-3">
+        <PlanCard plan={plan} />
+      </div>
+    </div>
+  );
+}
+
 export default function MakeAPlanPage() {
+  const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("HOUSE_PARTY");
   const [startsAt, setStartsAt] = useState("");
@@ -376,13 +406,31 @@ export default function MakeAPlanPage() {
   );
   const [vibeTags, setVibeTags] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState(COVER_PRESETS[0].url);
-  const [ageMin, setAgeMin] = useState(23);
-  const [ageMax, setAgeMax] = useState(30);
-  const [targetWomen, setTargetWomen] = useState(6);
-  const [targetMen, setTargetMen] = useState(6);
+  // Held as the typed text, not numbers: a number state turns a cleared field
+  // into 0 on the spot, so you couldn't empty it and type a fresh value.
+  const [ageMinText, setAgeMin] = useState("23");
+  const [ageMaxText, setAgeMax] = useState("30");
+  const [womenText, setTargetWomen] = useState("6");
+  const [menText, setTargetMen] = useState("6");
+  const ageMin = Number(ageMinText);
+  const ageMax = Number(ageMaxText);
+  const targetWomen = Number(womenText) || 0;
+  const targetMen = Number(menText) || 0;
+  const agesValid =
+    ageMinText !== "" && ageMaxText !== "" && ageMin >= 18 && ageMax <= 40 && ageMin <= ageMax;
   const [requiredOfGuests, setRequiredOfGuests] = useState<string[]>([]);
   const [rsvpQuestions, setRsvpQuestions] = useState<string[]>(DEFAULT_RSVP_QUESTIONS);
   const [houseRules, setHouseRules] = useState("");
+  const [paid, setPaid] = useState(false);
+  const [chipInText, setChipInText] = useState("");
+  const [chipInNote, setChipInNote] = useState("");
+  const chipIn = paid ? parseChipIn(chipInText) : null;
+  const [upiText, setUpiText] = useState("");
+  const upiId = normalizeUpiId(upiText);
+  const [askPhone, setAskPhone] = useState(false);
+  // With money involved the host has to be able to reach people, so a chip-in
+  // turns this on and locks it — the API enforces the same.
+  const phoneAsked = askPhone || paid;
   const [connectionPreference, setConnectionPreference] = useState("OPEN");
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
   // The plan exists the moment this is set — the form is done, and what's left
@@ -394,29 +442,66 @@ export default function MakeAPlanPage() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const coverInput = useRef<HTMLInputElement>(null);
+  const previewDialog = useRef<HTMLDialogElement>(null);
+  const [host, setHost] = useState({ name: "You", trustScore: 0 });
+
+  // Only for the preview card's "Host · name ★" line.
+  useEffect(() => {
+    getMe()
+      .then((me) => setHost({ name: me.name, trustScore: me.trustScore }))
+      .catch(() => {});
+  }, []);
 
   const toggleVibe = (v: string) =>
     setVibeTags((tags) => (tags.includes(v) ? tags.filter((t) => t !== v) : [...tags, v]));
 
-  // Same rule the API enforces, surfaced before they hit save.
+  // Same rules the API enforces, surfaced per step so "Next" means something.
   const mixOverflows = targetWomen + targetMen > capacity;
-  const canSubmit =
-    title.trim() &&
-    neighborhood.trim() &&
-    exactAddress.trim() &&
-    startsAt &&
-    !mixOverflows &&
-    status !== "saving";
+  const tooEarly = Boolean(startsAt && minStartsAt && startsAt < minStartsAt);
+  const stepGaps = [
+    [
+      !title.trim() && "a name",
+      !startsAt && "a time",
+      tooEarly && "a time that hasn't passed",
+      paid && chipIn === null && `a chip-in between ₹1 and ₹${MAX_CHIP_IN.toLocaleString("en-IN")}`,
+      paid && !upiId && "your UPI ID (like name@bank) for the chip-in",
+    ],
+    [!normalizeArea(neighborhood) && "an area", !exactAddress.trim() && "the exact address"],
+    [!agesValid && "an age range between 18 and 40", mixOverflows && "a group mix that fits"],
+  ].map((gaps) => gaps.filter(Boolean) as string[]);
+  const stepDone = stepGaps.map((g) => g.length === 0);
+  const canSubmit = stepDone.every(Boolean) && status !== "saving";
+  const gaps = stepGaps[step];
+
+  const preview: PlanSummary = {
+    id: "preview",
+    title: title.trim() || "Your plan's name",
+    category,
+    vibeTags,
+    neighborhood: normalizeArea(neighborhood) || "Your area",
+    imageUrl: coverPreview ?? imageUrl,
+    startsAt: startsAt ? new Date(startsAt).toISOString() : new Date().toISOString(),
+    capacity,
+    chipIn,
+    confirmedCount: 0,
+    host: { id: "you", name: host.name, image: null, trustScore: host.trustScore },
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Enter in a field on an early step means "next", not "create".
+    if (step < STEPS.length - 1) {
+      if (stepDone[step]) setStep(step + 1);
+      return;
+    }
+    if (!canSubmit) return;
     setStatus("saving");
     try {
       const plan = await createPlan({
         title: title.trim(),
         category,
         startsAt: new Date(startsAt).toISOString(),
-        neighborhood: neighborhood.trim(),
+        neighborhood: normalizeArea(neighborhood),
         exactAddress: exactAddress.trim(),
         capacity,
         vibeTags,
@@ -424,6 +509,10 @@ export default function MakeAPlanPage() {
         requiredOfGuests,
         rsvpQuestions,
         houseRules: houseRules.trim() || undefined,
+        chipIn: chipIn ?? undefined,
+        chipInNote: (chipIn && chipInNote.trim()) || undefined,
+        upiId: (chipIn && upiId) || undefined,
+        askPhone: phoneAsked,
         crowd: { ageMin, ageMax, targetWomen, targetMen, connectionPreference, preferredVibes: vibeTags },
       });
       // Upload after creation, then attach. A failed upload shouldn't lose the
@@ -457,393 +546,566 @@ export default function MakeAPlanPage() {
         neighborhood={neighborhood}
         startsAt={startsAt}
         capacity={capacity}
+        chipIn={chipIn}
       />
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-5xl px-5 pb-24 pt-10 md:px-8">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-6xl px-5 pb-24 pt-10 md:px-8">
       <p className="meta-label text-primary">Host mode</p>
       <h1 className="mt-3 text-5xl uppercase md:text-7xl">Make a plan</h1>
       <p className="mt-3 text-lg text-muted-foreground">
         Put the idea out there. Keep the address private.
       </p>
 
-      <div className="mt-9 grid gap-6 md:grid-cols-2">
-        <Field title="What are you calling it?">
-          <input
-            value={title}
-            maxLength={40}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Saturday House Party"
-            className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
-          />
-        </Field>
-
-        <Field title="What are you planning?">
-          <div className="flex flex-wrap gap-2">
-            {CATEGORIES.map((c) => (
-              <Chip key={c.value} active={category === c.value} onClick={() => setCategory(c.value)}>
-                {c.label}
-              </Chip>
-            ))}
-          </div>
-        </Field>
-
-        <Field title="When?">
-          <input
-            type="datetime-local"
-            min={minStartsAt}
-            value={startsAt}
-            onChange={(e) => setStartsAt(e.target.value)}
-            className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
-          />
-        </Field>
-
-        <Field title="How many people?">
-          <div className="flex flex-wrap items-center gap-2">
-            {CAPACITIES.map((c) => (
-              <Chip key={c} active={capacity === c} onClick={() => setCapacity(c)}>
-                {c}
-              </Chip>
-            ))}
-          </div>
-        </Field>
-
-        <Field title="Where?">
-          <div className="flex flex-wrap gap-2">
-            {LAUNCH_AREAS.map((area) => (
-              <Chip
-                key={area}
-                active={neighborhood === area}
-                onClick={() => setNeighborhood(area)}
-              >
-                {area}
-              </Chip>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            <LockKeyhole className="mr-1 inline size-3" />
-            This is the only location shown publicly.
-          </p>
-          <input
-            value={exactAddress}
-            maxLength={60}
-            onChange={(e) => setExactAddress(e.target.value)}
-            placeholder="Exact address"
-            className="mt-3 w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
-          />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Required, and only ever shown to guests you accept.
-          </p>
-        </Field>
-
-        <Field title="Pick a cover">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {COVER_PRESETS.map((cover) => (
+      {/* Steps: done ones stay clickable, so going back to fix a detail is one tap. */}
+      <ol className="mt-8 grid grid-cols-3 gap-2">
+        {STEPS.map((label, i) => {
+          const reachable = i <= step || stepDone.slice(0, i).every(Boolean);
+          return (
+            <li key={label}>
               <button
-                key={cover.url}
                 type="button"
-                onClick={() => setImageUrl(cover.url)}
-                aria-pressed={imageUrl === cover.url}
-                className={`overflow-hidden rounded-sm border-2 border-foreground transition-transform duration-150 hover:-translate-y-0.5 ${imageUrl === cover.url ? "shadow-stamp" : "opacity-60"
-                  }`}
+                disabled={!reachable}
+                onClick={() => setStep(i)}
+                aria-current={i === step ? "step" : undefined}
+                className="group w-full text-left disabled:cursor-not-allowed"
               >
-                <Image
-                  src={cover.url}
-                  alt={cover.label}
-                  width={400}
-                  height={300}
-                  className="aspect-[4/3] w-full object-cover"
+                <span
+                  className={`block h-2.5 border-2 border-foreground ${
+                    i < step ? "bg-accent" : i === step ? "bg-primary" : "bg-card"
+                  }`}
                 />
-                <span className="meta-label block border-t-2 border-foreground bg-background py-1">
-                  {cover.label}
+                <span
+                  className={`mt-2 flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase ${
+                    i === step ? "" : "text-muted-foreground"
+                  }`}
+                >
+                  {i < step && stepDone[i] ? <Check className="size-3" strokeWidth={3} /> : `${i + 1}.`}
+                  <span className="truncate">{label}</span>
                 </span>
               </button>
-            ))}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-4">
-            <button
-              type="button"
-              onClick={() => coverInput.current?.click()}
-              className="inline-flex h-11 items-center gap-2 border-2 border-foreground bg-card px-4 font-bold uppercase shadow-stamp-sm transition-transform active:translate-x-0.5 active:translate-y-0.5"
-            >
-              <ImagePlus className="size-4" />
-              {coverFile ? "Change photo" : "Use your own photo"}
-            </button>
+            </li>
+          );
+        })}
+      </ol>
 
-            {coverPreview && (
-              <div className="flex items-center gap-3">
-                <Image
-                  src={coverPreview}
-                  alt="Your cover"
-                  width={120}
-                  height={90}
-                  unoptimized
-                  className="h-14 w-20 border-2 border-foreground object-cover shadow-stamp-sm"
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-6">
+          {step === 0 && (
+            <>
+              <Field title="What are you calling it?">
+                <input
+                  value={title}
+                  maxLength={40}
+                  autoFocus
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Saturday House Party"
+                  className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCoverFile(null);
-                    setCoverPreview(null);
-                    if (coverInput.current) coverInput.current.value = "";
-                  }}
-                  className="font-mono text-xs font-bold uppercase text-muted-foreground hover:text-foreground"
-                >
-                  Remove
-                </button>
-              </div>
-            )}
+              </Field>
 
-            <input
-              ref={coverInput}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                setCoverFile(file);
-                setCoverPreview(file ? URL.createObjectURL(file) : null);
-              }}
-            />
-          </div>
-
-          <p className="mt-3 text-xs text-muted-foreground">
-            {coverFile
-              ? "Your photo replaces the preset once the plan is created."
-              : "Your own photo beats a preset — people can tell."}
-          </p>
-        </Field>
-
-        <Field title="What's the vibe?">
-          <div className="flex flex-wrap gap-2">
-            {VIBES.map((v) => (
-              <button key={v} type="button" onClick={() => toggleVibe(v)}>
-                <Pill tone={vibeTags.includes(v) ? "purple" : "plain"}>{v}</Pill>
-              </button>
-            ))}
-          </div>
-        </Field>
-      </div>
-
-      <section className="paper-card mt-6">
-        <div className="border-b-2 border-foreground p-5">
-          <h2 className="text-xl uppercase">Who comes</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            All of this is optional, and all of it can change after the plan is
-            live. Open only what you actually care about.
-          </p>
-        </div>
-
-        <Fold
-          label="Before someone can ask"
-          value={
-            requiredOfGuests.length === 0
-              ? "Anyone can ask"
-              : profileSteps({})
-                .filter((s) => requiredOfGuests.includes(s.key))
-                .map((s) => s.label)
-                .join(", ")
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            Everyone already needs an age, a city and their vibe. Ask for more and
-            fewer people apply — but you can actually judge the ones who do.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {profileSteps({})
-              .filter((step) => HOST_REQUIRABLE.includes(step.key))
-              .map((step) => (
-                <Chip
-                  key={step.key}
-                  active={requiredOfGuests.includes(step.key)}
-                  title={step.payoff}
-                  onClick={() =>
-                    setRequiredOfGuests((keys) =>
-                      keys.includes(step.key)
-                        ? keys.filter((k) => k !== step.key)
-                        : [...keys, step.key],
-                    )
-                  }
-                >
-                  {step.label}
-                </Chip>
-              ))}
-          </div>
-        </Fold>
-
-        <Fold
-          label="Questions you ask them"
-          value={
-            rsvpQuestions.length === 0
-              ? "None"
-              : `${rsvpQuestions.length} of ${MAX_RSVP_QUESTIONS}`
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            Answers land in your applicant desk. Every extra question loses you a
-            few replies, so only ask what changes your mind.
-          </p>
-          {Object.entries(
-            RSVP_QUESTIONS.reduce<Record<string, typeof RSVP_QUESTIONS>>((acc, q) => {
-              (acc[q.group] ??= []).push(q);
-              return acc;
-            }, {}),
-          ).map(([group, questions]) => (
-            <div key={group} className="mt-4">
-              <p className="font-mono text-xs font-bold uppercase text-muted-foreground">
-                {group}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {questions.map((q) => {
-                  const on = rsvpQuestions.includes(q.id);
-                  const full = rsvpQuestions.length >= MAX_RSVP_QUESTIONS;
-                  return (
-                    <Chip
-                      key={q.id}
-                      active={on}
-                      disabled={!on && full}
-                      title={q.payoff}
-                      onClick={() =>
-                        setRsvpQuestions((ids) =>
-                          ids.includes(q.id)
-                            ? ids.filter((i) => i !== q.id)
-                            : ids.length >= MAX_RSVP_QUESTIONS
-                              ? ids
-                              : [...ids, q.id],
-                        )
-                      }
-                    >
-                      {q.label}
+              <Field title="What kind of plan?">
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((c) => (
+                    <Chip key={c.value} active={category === c.value} onClick={() => setCategory(c.value)}>
+                      <span aria-hidden className="mr-1.5">{c.emoji}</span>
+                      {c.label}
                     </Chip>
-                  );
-                })}
+                  ))}
+                </div>
+              </Field>
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field title="When?">
+                  <DateTimePicker value={startsAt} onChange={setStartsAt} min={minStartsAt} />
+                </Field>
+
+                <Field title="How many people?">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {CAPACITIES.map((c) => (
+                      <Chip key={c} active={capacity === c} onClick={() => setCapacity(c)}>
+                        {c}
+                      </Chip>
+                    ))}
+                  </div>
+                </Field>
               </div>
-            </div>
-          ))}
-        </Fold>
 
-        <Fold label="House rules" value={houseRules.trim() ? "Written" : "None"}>
-          <p className="text-sm text-muted-foreground">
-            Write these and every guest has to tick a box before they can ask to
-            come. Leave it blank and there&apos;s no box.
-          </p>
-          <textarea
-            value={houseRules}
-            maxLength={1000}
-            rows={3}
-            onChange={(e) => setHouseRules(e.target.value)}
-            placeholder="No uninvited plus-ones. Keep it down after 11 — thin walls. If I ask you to leave, please just go."
-            className="mt-3 w-full rounded-sm border-2 border-foreground bg-background p-3 text-sm outline-none focus:shadow-stamp-sm"
-          />
-        </Fold>
+              <Field title="Is there a chip-in?">
+                <div className="flex flex-wrap gap-2">
+                  <Chip active={!paid} onClick={() => setPaid(false)}>
+                    Free
+                  </Chip>
+                  <Chip active={paid} onClick={() => setPaid(true)}>
+                    Guests chip in
+                  </Chip>
+                </div>
+                {paid && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[10rem_1fr]">
+                    <label className="flex flex-col gap-1.5">
+                      <span className="meta-label text-muted-foreground">Per person</span>
+                      <span className="flex items-center rounded-sm border-2 border-foreground bg-background focus-within:shadow-stamp-sm">
+                        <span className="pl-3 font-bold">₹</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          max={MAX_CHIP_IN}
+                          value={chipInText}
+                          onChange={(e) => setChipInText(e.target.value)}
+                          placeholder="300"
+                          className="w-full bg-transparent p-3 pl-1.5 outline-none"
+                        />
+                      </span>
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                      <span className="meta-label text-muted-foreground">
+                        What it covers <span className="normal-case">(optional)</span>
+                      </span>
+                      <input
+                        value={chipInNote}
+                        maxLength={MAX_CHIP_IN_NOTE}
+                        onChange={(e) => setChipInNote(e.target.value)}
+                        placeholder="Food, snacks & the space"
+                        className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
+                      />
+                    </label>
+                  </div>
+                )}
+                {paid && (
+                  <label className="mt-3 flex flex-col gap-1.5">
+                    <span className="meta-label text-muted-foreground">Your UPI ID</span>
+                    <input
+                      value={upiText}
+                      onChange={(e) => setUpiText(e.target.value)}
+                      onBlur={() => upiId && setUpiText(upiId)}
+                      placeholder="yourname@okaxis"
+                      autoCapitalize="none"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full rounded-sm border-2 border-foreground bg-background p-3 font-mono outline-none focus:shadow-stamp-sm"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Required with a chip-in. Accepted guests get a &ldquo;Pay&rdquo; button that
+                      opens their UPI app with this filled in — only people you accept ever see it.
+                      Guests will also be asked for their phone number.
+                    </span>
+                  </label>
+                )}
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {paid
+                    ? "Guests pay you directly — UPI or at the door. Baithak doesn't handle the money. Keep it to food and the space: charging for alcohol needs a licence."
+                    : "Most plans here are free. Asking for a chip-in is fine for food or a booked space."}
+                </p>
+              </Field>
+            </>
+          )}
 
-        <Fold label="Age range" value={`${ageMin}–${ageMax}`}>
-          <p className="text-sm text-muted-foreground">
-            A target, not a filter — nobody is auto-declined for being outside it.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <input
-              type="number"
-              min={18}
-              max={40}
-              value={ageMin}
-              onChange={(e) => setAgeMin(Number(e.target.value))}
-              aria-label="Minimum age"
-              className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
-            />
-            <span className="font-bold">to</span>
-            <input
-              type="number"
-              min={18}
-              max={40}
-              value={ageMax}
-              onChange={(e) => setAgeMax(Number(e.target.value))}
-              aria-label="Maximum age"
-              className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
-            />
-          </div>
-        </Fold>
+          {step === 1 && (
+            <>
+              <Field title="Where?">
+                <input
+                  value={neighborhood}
+                  maxLength={MAX_AREA_LENGTH}
+                  onChange={(e) => setNeighborhood(e.target.value)}
+                  onBlur={() => setNeighborhood(normalizeArea(neighborhood))}
+                  placeholder="Area, e.g. Koramangala"
+                  aria-label="Area"
+                  className="w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {LAUNCH_AREAS.map((area) => (
+                    <Chip
+                      key={area}
+                      active={normalizeArea(neighborhood) === area}
+                      onClick={() => setNeighborhood(area)}
+                    >
+                      {area}
+                    </Chip>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  <LockKeyhole className="mr-1 inline size-3" />
+                  This is the only location shown publicly.
+                </p>
+                <input
+                  value={exactAddress}
+                  maxLength={60}
+                  onChange={(e) => setExactAddress(e.target.value)}
+                  placeholder="Exact address"
+                  className="mt-3 w-full rounded-sm border-2 border-foreground bg-background p-3 outline-none focus:shadow-stamp-sm"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Required, and only ever shown to guests you accept.
+                </p>
+              </Field>
 
-        <Fold
-          label="Group mix"
-          value={`${targetWomen} + ${targetMen} of ${capacity}`}
-          alert={mixOverflows}
-        >
-          <p className="text-sm text-muted-foreground">
-            What you&apos;d like the room to look like. Also a target, never a filter.
-          </p>
-          <div className="mt-3 flex items-center gap-3">
-            <label className="flex items-center gap-2 font-bold">
-              <span aria-hidden>&#9792;</span>
-              <input
-                type="number"
-                min={0}
-                max={Math.max(0, capacity - targetMen)}
-                value={targetWomen}
-                onChange={(e) => setTargetWomen(Number(e.target.value))}
-                aria-label="Target women"
-                className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
-              />
-            </label>
-            <label className="flex items-center gap-2 font-bold">
-              <span aria-hidden>&#9794;</span>
-              <input
-                type="number"
-                min={0}
-                max={Math.max(0, capacity - targetWomen)}
-                value={targetMen}
-                onChange={(e) => setTargetMen(Number(e.target.value))}
-                aria-label="Target men"
-                className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
-              />
-            </label>
-          </div>
-          {mixOverflows && (
-            <p className="mt-3 font-bold text-primary">
-              That&apos;s {targetWomen + targetMen} people for {capacity} spots.
+              <Field title="Pick a cover">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {COVER_PRESETS.map((cover) => {
+                    const on = !coverPreview && imageUrl === cover.url;
+                    return (
+                      <button
+                        key={cover.url}
+                        type="button"
+                        onClick={() => setImageUrl(cover.url)}
+                        aria-pressed={on}
+                        className={`overflow-hidden rounded-sm border-2 border-foreground transition-transform duration-150 hover:-translate-y-0.5 ${on ? "shadow-stamp" : "opacity-60"
+                          }`}
+                      >
+                        <Image
+                          src={cover.url}
+                          alt={cover.label}
+                          width={400}
+                          height={300}
+                          className="aspect-4/3 w-full object-cover"
+                        />
+                        <span className="meta-label block border-t-2 border-foreground bg-background py-1">
+                          {cover.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => coverInput.current?.click()}
+                    className="inline-flex h-11 items-center gap-2 border-2 border-foreground bg-card px-4 font-bold uppercase shadow-stamp-sm transition-transform active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    <ImagePlus className="size-4" />
+                    {coverFile ? "Change photo" : "Use your own photo"}
+                  </button>
+
+                  {coverPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverFile(null);
+                        setCoverPreview(null);
+                        if (coverInput.current) coverInput.current.value = "";
+                      }}
+                      className="font-mono text-xs font-bold uppercase text-muted-foreground hover:text-foreground"
+                    >
+                      Remove my photo
+                    </button>
+                  )}
+
+                  <input
+                    ref={coverInput}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      setCoverFile(file);
+                      setCoverPreview(file ? URL.createObjectURL(file) : null);
+                    }}
+                  />
+                </div>
+
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {coverFile
+                    ? "Your photo is in the preview, and goes up once the plan is created."
+                    : "Your own photo beats a preset — people can tell."}
+                </p>
+              </Field>
+
+              <Field title="What's the vibe?">
+                <div className="flex flex-wrap gap-2">
+                  {VIBES.map((v) => (
+                    <button key={v} type="button" onClick={() => toggleVibe(v)}>
+                      <Pill tone={vibeTags.includes(v) ? "purple" : "plain"}>{v}</Pill>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
+
+          {step === 2 && (
+            <section className="paper-card">
+              <div className="border-b-2 border-foreground p-5">
+                <h2 className="text-xl uppercase">Who comes</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  All optional, all changeable after it&apos;s live. The defaults are
+                  fine — open only what you actually care about.
+                </p>
+              </div>
+
+              <Fold
+                label="Who can request"
+                value={CONNECTION_OPTIONS.find((o) => o.value === connectionPreference)?.label ?? ""}
+              >
+                <RetroSelect
+                  label="Who can request"
+                  value={connectionPreference}
+                  onChange={setConnectionPreference}
+                  options={CONNECTION_OPTIONS}
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  A preference for your applicant desk, not a filter — anyone can still ask.
+                </p>
+              </Fold>
+
+              <Fold
+                label="Before someone can ask"
+                value={
+                  requiredOfGuests.length === 0
+                    ? "Anyone can ask"
+                    : profileSteps({})
+                      .filter((s) => requiredOfGuests.includes(s.key))
+                      .map((s) => s.label)
+                      .join(", ")
+                }
+              >
+                <p className="text-sm text-muted-foreground">
+                  Everyone already needs an age, a city and their vibe. Ask for more and
+                  fewer people apply — but you can actually judge the ones who do.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {profileSteps({})
+                    .filter((s) => HOST_REQUIRABLE.includes(s.key))
+                    .map((s) => (
+                      <Chip
+                        key={s.key}
+                        active={requiredOfGuests.includes(s.key)}
+                        title={s.payoff}
+                        onClick={() =>
+                          setRequiredOfGuests((keys) =>
+                            keys.includes(s.key)
+                              ? keys.filter((k) => k !== s.key)
+                              : [...keys, s.key],
+                          )
+                        }
+                      >
+                        {s.label}
+                      </Chip>
+                    ))}
+                </div>
+              </Fold>
+
+              <Fold
+                label="Questions you ask them"
+                value={
+                  rsvpQuestions.length === 0
+                    ? "None"
+                    : `${rsvpQuestions.length} of ${MAX_RSVP_QUESTIONS}`
+                }
+              >
+                <p className="text-sm text-muted-foreground">
+                  Answers land in your applicant desk. Every extra question loses you a
+                  few replies, so only ask what changes your mind.
+                </p>
+                {Object.entries(
+                  RSVP_QUESTIONS.reduce<Record<string, typeof RSVP_QUESTIONS>>((acc, q) => {
+                    (acc[q.group] ??= []).push(q);
+                    return acc;
+                  }, {}),
+                ).map(([group, questions]) => (
+                  <div key={group} className="mt-4">
+                    <p className="font-mono text-xs font-bold uppercase text-muted-foreground">
+                      {group}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {questions.map((q) => {
+                        const on = rsvpQuestions.includes(q.id);
+                        const full = rsvpQuestions.length >= MAX_RSVP_QUESTIONS;
+                        return (
+                          <Chip
+                            key={q.id}
+                            active={on}
+                            disabled={!on && full}
+                            title={q.payoff}
+                            onClick={() =>
+                              setRsvpQuestions((ids) =>
+                                ids.includes(q.id)
+                                  ? ids.filter((i) => i !== q.id)
+                                  : ids.length >= MAX_RSVP_QUESTIONS
+                                    ? ids
+                                    : [...ids, q.id],
+                              )
+                            }
+                          >
+                            {q.label}
+                          </Chip>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </Fold>
+
+              <Fold label="Phone numbers" value={paid ? "Asked · chip-in" : askPhone ? "Asked" : "Not asked"}>
+                <p className="text-sm text-muted-foreground">
+                  Handy for directions on the night. Everyone who asks has to give one, and you
+                  only see someone&apos;s number once you&apos;ve accepted them.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Chip active={!phoneAsked} disabled={paid} onClick={() => setAskPhone(false)}>
+                    Don&apos;t ask
+                  </Chip>
+                  <Chip active={phoneAsked} onClick={() => setAskPhone(true)}>
+                    Ask for their number
+                  </Chip>
+                </div>
+                {paid && (
+                  <p className="mt-2 text-xs font-bold text-muted-foreground">
+                    Always on with a chip-in, so you can reach people about payment.
+                  </p>
+                )}
+              </Fold>
+
+              <Fold label="House rules" value={houseRules.trim() ? "Written" : "None"}>
+                <p className="text-sm text-muted-foreground">
+                  Write these and every guest has to tick a box before they can ask to
+                  come. Leave it blank and there&apos;s no box.
+                </p>
+                <textarea
+                  value={houseRules}
+                  maxLength={1000}
+                  rows={3}
+                  onChange={(e) => setHouseRules(e.target.value)}
+                  placeholder="No uninvited plus-ones. Keep it down after 11 — thin walls. If I ask you to leave, please just go."
+                  className="mt-3 w-full rounded-sm border-2 border-foreground bg-background p-3 text-sm outline-none focus:shadow-stamp-sm"
+                />
+              </Fold>
+
+              <Fold label="Age range" value={agesValid ? `${ageMin}–${ageMax}` : "Check this"} alert={!agesValid}>
+                <p className="text-sm text-muted-foreground">
+                  A target, not a filter — nobody is auto-declined for being outside it.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={18}
+                    max={40}
+                    value={ageMinText}
+                    onChange={(e) => setAgeMin(e.target.value)}
+                    aria-label="Minimum age"
+                    className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
+                  />
+                  <span className="font-bold">to</span>
+                  <input
+                    type="number"
+                    min={18}
+                    max={40}
+                    value={ageMaxText}
+                    onChange={(e) => setAgeMax(e.target.value)}
+                    aria-label="Maximum age"
+                    className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
+                  />
+                </div>
+              </Fold>
+
+              <Fold
+                label="Group mix"
+                value={`${targetWomen} + ${targetMen} of ${capacity}`}
+                alert={mixOverflows}
+              >
+                <p className="text-sm text-muted-foreground">
+                  What you&apos;d like the room to look like. Also a target, never a filter.
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <label className="flex items-center gap-2 font-bold">
+                    <span aria-hidden>&#9792;</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={Math.max(0, capacity - targetMen)}
+                      value={womenText}
+                      onChange={(e) => setTargetWomen(e.target.value)}
+                      aria-label="Target women"
+                      className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 font-bold">
+                    <span aria-hidden>&#9794;</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={Math.max(0, capacity - targetWomen)}
+                      value={menText}
+                      onChange={(e) => setTargetMen(e.target.value)}
+                      aria-label="Target men"
+                      className="w-20 rounded-sm border-2 border-foreground bg-background p-2 outline-none focus:shadow-stamp-sm"
+                    />
+                  </label>
+                </div>
+                {mixOverflows && (
+                  <p className="mt-3 font-bold text-primary">
+                    That&apos;s {targetWomen + targetMen} people for {capacity} spots.
+                  </p>
+                )}
+              </Fold>
+            </section>
+          )}
+
+          {status === "error" && (
+            <p className="meta-label text-primary">
+              Couldn&apos;t create that plan — check the details and try again.
             </p>
           )}
-        </Fold>
 
-        <Fold
-          label="Who can request"
-          value={
-            CONNECTION_LABELS[connectionPreference as keyof typeof CONNECTION_LABELS] ??
-            "Open to new people"
-          }
-        >
-          <select
-            value={connectionPreference}
-            onChange={(e) => setConnectionPreference(e.target.value)}
-            aria-label="Connection preference"
-            className="w-full rounded-sm border-2 border-foreground bg-background p-2 font-bold outline-none"
-          >
-            {Object.entries(CONNECTION_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Fold>
-      </section>
+          <div className="flex flex-wrap items-center gap-3 border-t-2 border-foreground pt-6">
+            {step > 0 && (
+              <Button variant="outline" onClick={() => setStep(step - 1)}>
+                Back
+              </Button>
+            )}
+            <Button
+              type="submit"
+              disabled={step < STEPS.length - 1 ? !stepDone[step] : !canSubmit}
+            >
+              {step < STEPS.length - 1
+                ? `Next: ${STEPS[step + 1]}`
+                : status === "saving"
+                  ? "Creating…"
+                  : "Put it out there"}
+              <ChevronRight />
+            </Button>
+            <button
+              type="button"
+              onClick={() => previewDialog.current?.showModal()}
+              className="inline-flex h-12 items-center gap-2 px-2 font-bold uppercase underline lg:hidden"
+            >
+              <Eye className="size-4" /> Preview
+            </button>
+            <p className="w-full text-sm text-muted-foreground">
+              {gaps.length
+                ? `Still need ${gaps.join(" and ")}.`
+                : step === STEPS.length - 1
+                  ? "Nothing here is final — you can change all of it after it's live."
+                  : "Looking good."}
+            </p>
+          </div>
+        </div>
 
-      {status === "error" && (
-        <p className="meta-label mt-6 text-primary">
-          Couldn&apos;t create that plan — check the details and try again.
-        </p>
-      )}
-
-      <div className="mt-9 flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={!canSubmit}>
-          {status === "saving" ? "Creating…" : "Put it out there"}
-          <ChevronRight />
-        </Button>
-        <p className="text-sm text-muted-foreground">
-          Nothing here is final — you can change all of it after it&apos;s live.
-        </p>
+        <aside className="hidden lg:block">
+          <div className="sticky top-24">
+            <Preview plan={preview} />
+            <p className="mt-4 text-xs text-muted-foreground">
+              <LockKeyhole className="mr-1 inline size-3" />
+              Guests see the area, never the address, until you accept them.
+            </p>
+          </div>
+        </aside>
       </div>
+
+      <dialog
+        ref={previewDialog}
+        onClick={(e) => e.target === previewDialog.current && previewDialog.current.close()}
+        className="m-auto w-[calc(100%-2rem)] max-w-sm bg-transparent p-0 backdrop:bg-foreground/60 backdrop:backdrop-blur-sm"
+      >
+        <div className="paper-card space-y-4 bg-background p-4">
+          <Preview plan={preview} />
+          <Button onClick={() => previewDialog.current?.close()} variant="outline" className="w-full">
+            Back to editing
+          </Button>
+        </div>
+      </dialog>
     </form>
   );
 }

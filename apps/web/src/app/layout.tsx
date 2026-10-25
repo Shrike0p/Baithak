@@ -29,7 +29,7 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Baithak — You Don't Need a Squad",
   description:
-    "Find trusted small-group plans, meet the crew, and make real memories in Bangalore.",
+    "Find trusted small-group plans, meet the crew, and make real memories.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

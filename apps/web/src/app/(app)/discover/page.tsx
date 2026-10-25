@@ -24,7 +24,7 @@ export default async function DiscoverPage() {
     <div className="mx-auto max-w-[1280px] px-4 pb-24 pt-10 md:px-8">
       <div className="mb-10 md:flex md:items-end md:justify-between">
         <div>
-          <p className="meta-label text-primary">Bangalore · {today}</p>
+          <p className="meta-label text-primary">{today}</p>
           <h1 className="mt-3 text-5xl uppercase md:text-7xl">What&apos;s the plan?</h1>
           <p className="mt-3 text-lg text-muted-foreground">
             Find something. Find your people.
@@ -73,7 +73,7 @@ export default async function DiscoverPage() {
 
           <section className="mt-14 grid gap-8 md:grid-cols-[.75fr_1.25fr]">
             <div className="border-2 border-foreground bg-secondary p-7 text-secondary-foreground shadow-stamp">
-              <p className="meta-label">New in Bangalore</p>
+              <p className="meta-label">New in town</p>
               <h2 className="mt-5 text-4xl uppercase">
                 No squad?
                 <br />

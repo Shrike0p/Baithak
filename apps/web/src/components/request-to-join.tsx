@@ -5,7 +5,7 @@ import { Check, X } from "lucide-react";
 import { applyToPlan, ApiError } from "@/lib/api";
 import { Button, Pill } from "@/components/ui";
 import { useSound } from "@/lib/use-sound";
-import { BIO_PROMPTS, profileStrength, rsvpQuestion, type ProfileInput } from "@baithak/types";
+import { BIO_PROMPTS, normalizePhone, profileStrength, rsvpQuestion, type ProfileInput } from "@baithak/types";
 
 const BRINGING_OPTIONS = [
   { value: "SOLO", label: "Solo" },
@@ -63,6 +63,7 @@ export function RequestToJoin({
   questions = [],
   houseRules,
   requiredOfGuests = [],
+  askPhone = false,
   profile,
 }: {
   planId: string;
@@ -72,6 +73,8 @@ export function RequestToJoin({
   houseRules?: string | null;
   /** Profile steps this host demands on top of the platform baseline. */
   requiredOfGuests?: string[];
+  /** The host wants a number from everyone who asks. */
+  askPhone?: boolean;
   /** The applicant's profile, so the form asks only for what's actually missing. */
   profile?: ProfileInput;
 }) {
@@ -80,6 +83,8 @@ export function RequestToJoin({
   const [note, setNote] = useState("");
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [agreed, setAgreed] = useState(false);
+  const [phoneText, setPhoneText] = useState("");
+  const phone = normalizePhone(phoneText);
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
   const { play } = useSound();
@@ -91,7 +96,7 @@ export function RequestToJoin({
   );
   const [details, setDetails] = useState({
     age: "",
-    city: profile?.city?.trim() || "Bangalore",
+    city: profile?.city?.trim() ?? "",
     vibeTags: profile?.vibeTags ?? [],
     socialUrl: "",
     occupation: "",
@@ -116,7 +121,7 @@ export function RequestToJoin({
     missing.includes("occupation") && !details.occupation.trim(),
     missing.includes("bio") && !details.bio.trim(),
   ].filter(Boolean).length;
-  const left = profileGaps + unanswered.length;
+  const left = profileGaps + unanswered.length + (askPhone && !phone ? 1 : 0);
 
   function pick(id: string, value: string, multi: boolean, max: number) {
     setAnswers((prev) => {
@@ -170,6 +175,7 @@ export function RequestToJoin({
         note: note || undefined,
         answers,
         agreed: houseRules ? agreed : undefined,
+        phone: askPhone && phone ? phone : undefined,
       });
       setMissing([]);
       setStatus("sent");
@@ -293,6 +299,7 @@ export function RequestToJoin({
                                   value={details.city}
                                   maxLength={60}
                                   onChange={(e) => set({ city: e.target.value })}
+                                  placeholder="Your city"
                                   className={input}
                                 />
                               </Field>
@@ -380,6 +387,29 @@ export function RequestToJoin({
                     ))}
                   </div>
                 </Section>
+
+                {askPhone && (
+                  <Section
+                    n={++n}
+                    title="Your phone number"
+                    hint="Only the host sees it, and only if they accept you — for directions on the night."
+                  >
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={phoneText}
+                      onChange={(e) => setPhoneText(e.target.value)}
+                      placeholder="98765 43210"
+                      className={input}
+                    />
+                    {phoneText.trim() && !phone && (
+                      <p className="mt-1.5 text-xs font-bold text-primary">
+                        That doesn&apos;t look like a full mobile number.
+                      </p>
+                    )}
+                  </Section>
+                )}
 
                 {asked.map((q) => {
                   const value = answers[q.id];

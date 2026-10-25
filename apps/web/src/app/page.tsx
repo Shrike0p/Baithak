@@ -24,7 +24,7 @@ export default async function LandingPage() {
     <main className="min-h-screen overflow-hidden">
       <header className="flex h-20 items-center justify-between border-b-2 border-foreground px-5 md:px-10">
         <Logo />
-        <span className="meta-label hidden sm:block">Bangalore · Est. tonight</span>
+        <span className="meta-label hidden sm:block">Est. tonight</span>
         <Button href="/sign-in" variant="outline" size="sm">
           I have an account
         </Button>
@@ -63,7 +63,7 @@ export default async function LandingPage() {
 
           {plans.length > 0 && (
             <p className="meta-label mt-6 text-muted-foreground">
-              {plans.length} {plans.length === 1 ? "plan" : "plans"} open in Bangalore ·{" "}
+              {plans.length} {plans.length === 1 ? "plan" : "plans"} open now ·{" "}
               {spotsOpen} {spotsOpen === 1 ? "spot" : "spots"} left
             </p>
           )}
@@ -76,7 +76,7 @@ export default async function LandingPage() {
           >
             <Image
               src={first ? planArt(first.category, first.imageUrl).image : "/assets/house-party.jpg"}
-              alt={first?.title ?? "Friends dancing at a Bangalore house party"}
+              alt={first?.title ?? "Friends dancing at a house party"}
               width={1400}
               height={1000}
               priority
@@ -120,7 +120,7 @@ export default async function LandingPage() {
       {plans.length > 0 && (
         <section className="border-t-2 border-foreground px-5 py-14 md:px-12">
           <SectionTitle
-            kicker={`${plans.length} open in Bangalore`}
+            kicker={`${plans.length} open now`}
             title="What's on this week"
           />
           <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">

@@ -3,7 +3,7 @@ import { prisma } from "@baithak/db";
 import { getCurrentUserId } from "@/lib/current-user";
 import { scoreApplicant, bucketFor } from "@/lib/matching";
 import { composeCrew, groupHealth } from "@/lib/composition";
-import { profileStrength, rsvpQuestion } from "@baithak/types";
+import { normalizePhone, profileStrength, rsvpQuestion } from "@baithak/types";
 import { describeSocial } from "@/lib/social";
 import { notify } from "@/lib/notify";
 
@@ -100,6 +100,12 @@ export async function GET(
         })
         .filter((a) => a !== null),
       agreedAt: app.agreedAt,
+      // A stranger's number is theirs until the host says yes — the desk
+      // learns it was given, but not what it is.
+      phone: app.status === "ACCEPTED" ? app.phone : null,
+      phoneGiven: Boolean(app.phone),
+      paidClaimedAt: app.paidClaimedAt,
+      paidConfirmedAt: app.paidConfirmedAt,
       createdAt: app.createdAt,
       score,
       reasons,
@@ -136,6 +142,7 @@ export async function GET(
       capacity: plan.capacity,
       imageUrl: plan.imageUrl,
       vibeTags: plan.vibeTags,
+      chipIn: plan.chipIn,
     },
     composition,
     groupHealth: groupHealth(composition, plan.capacity, plan.crowd, true),
@@ -162,7 +169,7 @@ export async function POST(
     }),
     prisma.plan.findUnique({
       where: { id: planId },
-      select: { requiredOfGuests: true, rsvpQuestions: true, houseRules: true },
+      select: { requiredOfGuests: true, rsvpQuestions: true, houseRules: true, askPhone: true },
     }),
   ]);
   const strength = applicant ? profileStrength(applicant, gate?.requiredOfGuests ?? []) : null;
@@ -188,6 +195,16 @@ export async function POST(
   if (gate?.houseRules && body.agreed !== true) {
     return NextResponse.json(
       { error: "house rules", message: "Tick the house rules to send this." },
+      { status: 422 },
+    );
+  }
+
+  // Only stored when this host asked — a client can't attach a number to a
+  // plan that never wanted one.
+  const phone = gate?.askPhone ? normalizePhone(body.phone) : null;
+  if (gate?.askPhone && !phone) {
+    return NextResponse.json(
+      { error: "phone", message: "This host asks for a phone number — check it's a full mobile number." },
       { status: 422 },
     );
   }
@@ -221,15 +238,32 @@ export async function POST(
     );
   }
 
+  // A host's no stands. Re-asking used to reply "sent", ping the host, and
+  // then sit invisibly as PASSED — the guest waited forever on nothing.
+  const existing = await prisma.application.findUnique({
+    where: { planId_applicantId: { planId, applicantId } },
+    select: { status: true },
+  });
+  if (existing?.status === "PASSED") {
+    return NextResponse.json(
+      { error: "decided", message: "The host has already made their call on this one. There's plenty more on Discover." },
+      { status: 409 },
+    );
+  }
+  if (existing?.status === "ACCEPTED") {
+    return NextResponse.json({ error: "already in", message: "You're already in — head to the party room." }, { status: 409 });
+  }
+
   const application = await prisma.application.upsert({
     where: { planId_applicantId: { planId, applicantId } },
-    update: { bringingWith, note, answers, agreedAt: gate?.houseRules ? new Date() : null },
+    update: { bringingWith, note, answers, phone, agreedAt: gate?.houseRules ? new Date() : null },
     create: {
       planId,
       applicantId,
       bringingWith,
       note,
       answers,
+      phone,
       agreedAt: gate?.houseRules ? new Date() : null,
     },
   });
@@ -238,7 +272,8 @@ export async function POST(
     where: { id: planId },
     select: { hostId: true, title: true },
   });
-  if (plan) {
+  // Editing a request that's still waiting isn't news for the host.
+  if (plan && !existing) {
     notify({
       userId: plan.hostId,
       kind: "NEW_APPLICANT",

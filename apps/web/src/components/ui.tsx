@@ -41,11 +41,13 @@ export function Pill({
   className?: string;
 }) {
   const tones = {
-    plain: "bg-background",
+    // Light backgrounds get dark text explicitly — inheriting it put white
+    // text on cream/grey whenever a pill sat inside a dark card.
+    plain: "bg-background text-foreground",
     orange: "bg-primary text-primary-foreground",
     purple: "bg-secondary text-secondary-foreground",
     green: "bg-accent text-accent-foreground",
-    muted: "bg-muted",
+    muted: "bg-muted text-foreground",
   };
 
   return (

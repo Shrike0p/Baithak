@@ -52,6 +52,22 @@
   --animate-stamp: stamp-in 0.35s ease-out both;
 }
 
+/* Tailwind v4 dropped cursor: pointer from buttons; every clickable thing here
+   should still look clickable. In a layer so a utility class can override it. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="option"],
+  summary,
+  label:has(input[type="checkbox"]),
+  input[type="file"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
 /* Scrapbook paper texture — subtle dot grid across the whole canvas. */
 body {
   background-color: var(--background);

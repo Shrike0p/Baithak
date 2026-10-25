@@ -90,7 +90,7 @@ export const RSVP_QUESTIONS: RsvpQuestion[] = [
   },
   {
     id: "newToCity",
-    label: "Are you new to Bangalore?",
+    label: "Are you new to the city?",
     payoff: "If you want to host newcomers, this is how you find them",
     group: "Vibe & fit",
     kind: "choice",

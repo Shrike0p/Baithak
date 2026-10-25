@@ -45,6 +45,17 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // Where the viewer's own request stands, so the page shows "sent" or "not
+  // this time" instead of offering a join button that can't do anything.
+  const myRequest =
+    userId && plan.hostId !== userId
+      ? (
+          await prisma.application.findUnique({
+            where: { planId_applicantId: { planId: plan.id, applicantId: userId } },
+            select: { status: true },
+          })
+        )?.status ?? null
+      : null;
   const viewerIsConfirmedAttendee = plan.attendees.some((a) => a.userId === userId);
   const isHost = plan.hostId === userId;
   const hasStarted = plan.startsAt.getTime() <= Date.now();
@@ -77,6 +88,11 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
     vibeTags: plan.vibeTags,
     neighborhood: plan.neighborhood,
     imageUrl: plan.imageUrl,
+    chipIn: plan.chipIn,
+    chipInNote: plan.chipInNote,
+    // So the join form asks up front. The UPI ID is NOT here — it lives in the
+    // party room, behind the same gate as the exact address.
+    askPhone: plan.askPhone,
     // exact address only ever leaves the API for confirmed attendees — see docs/ARCHITECTURE.md flow 2.4
     exactAddress: viewerIsConfirmedAttendee ? plan.exactAddress : null,
     startsAt: plan.startsAt,
@@ -109,6 +125,10 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
     status: plan.status,
     hasStarted,
     isAttending: viewerIsConfirmedAttendee,
+    myRequest,
+    // Accepted guests only — the same gate as the exact address — so they can
+    // pay from the plan page, not just from inside the party room.
+    ...(viewerIsConfirmedAttendee && !isHost && plan.chipIn ? await guestPayment(plan.id, userId!, plan.upiId) : {}),
     ...memories,
   });
 }
@@ -250,4 +270,13 @@ export async function DELETE(request: NextRequest, ctx: RouteContext<"/api/plans
   await prisma.plan.delete({ where: { id } });
 
   return NextResponse.json({ ok: true });
+}
+
+/** The UPI ID to pay and where this guest's chip-in stands. */
+async function guestPayment(planId: string, userId: string, upiId: string | null) {
+  const myPayment = await prisma.application.findUnique({
+    where: { planId_applicantId: { planId, applicantId: userId } },
+    select: { paidClaimedAt: true, paidConfirmedAt: true },
+  });
+  return { upiId, myPayment };
 }

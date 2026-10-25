@@ -11,6 +11,8 @@ const TONE: Record<string, string> = {
   PLAN_CANCELLED: "bg-primary",
   PLAN_WRAPPED: "bg-secondary",
   NEW_PHOTOS: "bg-secondary",
+  GUEST_REMOVED: "bg-muted",
+  PAYMENT_CLAIMED: "bg-primary",
 };
 
 function ago(iso: string) {

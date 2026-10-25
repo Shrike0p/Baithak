@@ -20,6 +20,7 @@ function serialize(plan: PlanRow, pendingApplications = 0) {
     vibeTags: plan.vibeTags,
     neighborhood: plan.neighborhood,
     imageUrl: plan.imageUrl,
+    chipIn: plan.chipIn,
     startsAt: plan.startsAt,
     capacity: plan.capacity,
     confirmedCount: plan._count.attendees,

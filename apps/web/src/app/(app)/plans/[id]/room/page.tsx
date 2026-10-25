@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   Clock3,
   LockKeyhole,
@@ -9,6 +9,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import {
+  ApiError,
   getPartyRoom,
   getMyReview,
   getMessages,
@@ -22,6 +23,7 @@ import { Button, Pill, PaperCard, SectionTitle } from "@/components/ui";
 import { MemoryGallery } from "@/components/memory-gallery";
 import { ReviewNight } from "@/components/review-night";
 import { PartyChat } from "@/components/party-chat";
+import { ChipInPay } from "@/components/chip-in-pay";
 
 const TABS = [
   { key: "chat", label: "Chat" },
@@ -72,6 +74,12 @@ function PeopleTab({ room }: { room: PartyRoom }) {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  {/* Only ever filled in for the host. */}
+                  {member.user.phone && (
+                    <a href={`tel:${member.user.phone}`} className="mt-1 inline-block font-mono text-sm font-bold underline">
+                      {member.user.phone}
+                    </a>
+                  )}
                 </div>
                 <span className="ml-auto font-mono text-sm font-bold">
                   ★ {member.user.trustScore.toFixed(1)}
@@ -162,6 +170,22 @@ function TodayTab({ room }: { room: PartyRoom }) {
               The host hasn&apos;t added an exact address yet.
             </p>
           )}
+          {room.chipIn ? (
+            <p className="mt-3 border-t-2 border-foreground pt-3 text-sm">
+              <span className="font-bold">{room.isHost ? "Guests chip in" : "Bring"} ₹{room.chipIn.toLocaleString("en-IN")}</span>
+              {room.chipInNote && <span className="text-muted-foreground"> · {room.chipInNote}</span>}
+              {room.myPayment?.paidConfirmedAt && <span className="font-bold text-accent"> · Paid ✓</span>}
+              {!room.isHost && !room.upiId && (
+                <span className="block text-xs text-muted-foreground">Paid to the host directly — ask them in the chat, or bring it on the night.</span>
+              )}
+              {room.isHost && (
+                <span className="block text-xs text-muted-foreground">
+                  {room.upiId ? `Guests see a Pay button for ${room.upiId}.` : "No UPI ID added — guests will ask you how to pay."}
+                </span>
+              )}
+            </p>
+          ) : null}
+
         </div>
 
         <div className="paper-card bg-accent p-6">
@@ -281,10 +305,16 @@ export default async function PartyRoomPage({
 }: PageProps<"/plans/[id]/room">) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const room = await getPartyRoom(id).catch(() => null);
-  if (!room) notFound();
+  // Only a real 404 is "this plan doesn't exist". Swallowing every error into
+  // that page told people a live plan was gone whenever the API hiccuped.
+  const room = await getPartyRoom(id).catch((err) => {
+    if (err instanceof ApiError && err.status === 404) notFound();
+    if (err instanceof ApiError && err.status === 403) redirect(`/plans/${id}`);
+    throw err;
+  });
 
   const active: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "chat";
+  const chipInDue = Boolean(!room.isHost && room.chipIn && !room.myPayment?.paidConfirmedAt);
 
   // Both are fetched only for the tab that needs them — nobody reviews a party
   // that hasn't run, and the other tabs don't need the message history.
@@ -312,6 +342,33 @@ export default async function PartyRoomPage({
           </div>
         </div>
       </div>
+
+      {/* Above the tabs, so it's seen whichever tab the room opens on — it
+          used to live only under "Today", where most guests never looked.
+          One slim row: a reminder, not a takeover. */}
+      {chipInDue && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b-2 border-foreground bg-primary/15 px-5 py-2.5 md:px-8">
+          <p className="text-sm">
+            <span className="font-bold">₹{room.chipIn!.toLocaleString("en-IN")} chip-in due</span>
+            {room.chipInNote && <span className="text-muted-foreground"> · {room.chipInNote}</span>}
+          </p>
+          {room.upiId ? (
+            <ChipInPay
+              compact
+              planId={room.id}
+              upiId={room.upiId}
+              hostName={room.host.name}
+              amount={room.chipIn!}
+              planTitle={room.title}
+              payment={room.myPayment}
+            />
+          ) : (
+            <Link href={`/plans/${room.id}/room?tab=chat`} className="text-sm font-bold underline">
+              Ask the host how to pay
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="border-b-2 border-foreground px-5 md:px-8">
         <div className="hide-scrollbar flex overflow-x-auto">

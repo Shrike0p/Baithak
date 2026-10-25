@@ -15,6 +15,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { getMe, getPlan } from "@/lib/api";
+import { chipInLabel } from "@baithak/types";
 import { planArt } from "@/lib/plan-art";
 import { CoverPicker } from "@/components/cover-picker";
 import { MemoryGallery } from "@/components/memory-gallery";
@@ -24,6 +25,7 @@ import { SharePlan } from "@/components/share-plan";
 import { Button, Pill, PaperCard, SectionTitle } from "@/components/ui";
 import { Avatar } from "@/components/person-card";
 import { RequestToJoin } from "@/components/request-to-join";
+import { ChipInPay } from "@/components/chip-in-pay";
 
 /**
  * What a shared link says in the preview text. Public on purpose — everything
@@ -73,6 +75,7 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
   const me = signedIn && !plan.isAttending && !plan.isHost ? await getMe().catch(() => null) : null;
 
   const art = planArt(plan.category, plan.imageUrl);
+  const chipInDue = Boolean(plan.isAttending && !plan.isHost && plan.chipIn && !plan.myPayment?.paidConfirmedAt);
   const { composition: mix } = plan;
   const crewCount = mix.total;
   const returning = mix.returning;
@@ -120,6 +123,11 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
             <p className="mt-2 text-sm">
               Meet the crew, get the address, and see the photos afterwards.
             </p>
+            {chipInDue && (
+              <p className="mt-2 inline-block border-2 border-foreground bg-primary px-2 py-0.5 font-mono text-xs font-bold uppercase text-primary-foreground">
+                ₹{plan.chipIn!.toLocaleString("en-IN")} chip-in to pay ↓
+              </p>
+            )}
           </div>
           <span className="inline-flex h-12 items-center gap-2 border-2 border-foreground bg-background px-6 font-bold uppercase text-foreground shadow-stamp transition-transform group-hover:-translate-y-0.5">
             Open party room <ChevronRight className="size-4" />
@@ -127,8 +135,89 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
         </Link>
       )}
 
-      <div className="mx-auto grid max-w-[1200px] gap-10 px-5 py-10 lg:grid-cols-[1fr_340px] lg:px-8">
-        <div className="space-y-12">
+      {/* The actions come first in the DOM so on mobile they sit right under
+          the hero instead of below every section; on desktop the grid puts
+          them back at the top of the sidebar. */}
+      <div className="mx-auto grid max-w-[1200px] gap-x-10 gap-y-8 px-5 py-10 lg:grid-cols-[1fr_340px] lg:grid-rows-[auto_1fr] lg:gap-y-5 lg:px-8">
+        <div className="space-y-4 lg:col-start-2 lg:row-start-1">
+          {!plan.isAttending && !plan.isHost && (
+            <PaperCard className="p-5">
+              <h2 className="text-2xl uppercase">Want in?</h2>
+              {/* Said before they ask, not after they're accepted — a surprise
+                  cost is the fastest way to lose a guest's trust. */}
+              {plan.chipIn ? (
+                <p className="mt-3 border-2 border-foreground bg-muted p-3 text-sm">
+                  <span className="font-bold">{chipInLabel(plan.chipIn)}</span>
+                  {plan.chipInNote && <> · {plan.chipInNote}</>}
+                  <span className="block text-xs text-muted-foreground">
+                    Paid to the host directly if you&apos;re in. Nothing to pay to ask.
+                  </span>
+                </p>
+              ) : null}
+              <div className="mt-4">
+                {plan.myRequest === "PASSED" ? (
+                  <p className="text-sm">
+                    <span className="font-bold">Not this time.</span> The host went another way on
+                    this one — there&apos;s plenty more on{" "}
+                    <Link href="/discover" className="font-bold underline">
+                      Discover
+                    </Link>
+                    .
+                  </p>
+                ) : plan.myRequest === "PENDING" || plan.myRequest === "REVIEW_LATER" ? (
+                  <div className="space-y-2">
+                    <div className="-rotate-2 border-4 border-accent p-3 text-center font-display text-xl uppercase text-accent">
+                      Request sent ✓
+                    </div>
+                    <p className="text-center text-sm text-muted-foreground">
+                      Waiting on the host. You&apos;ll get a notification either way.
+                    </p>
+                  </div>
+                ) : signedIn ? (
+                  <RequestToJoin
+                    planId={plan.id}
+                    planTitle={plan.title}
+                    requiredOfGuests={plan.requiredOfGuests}
+                    askPhone={plan.askPhone}
+                    profile={me ?? undefined}
+                    questions={plan.rsvpQuestions}
+                    houseRules={plan.houseRules}
+                  />
+                ) : (
+                  // A forwarded link reaches people with no account; the form
+                  // would only 401. ?next= brings them back here after onboarding.
+                  <>
+                    <p className="text-sm">Hosts pick their crew from Baithak profiles. Make yours to ask in.</p>
+                    <Button href={`/sign-up?next=/plans/${plan.id}`} className="mt-4 w-full">
+                      Join Baithak to join this party
+                    </Button>
+                  </>
+                )}
+              </div>
+            </PaperCard>
+          )}
+          {/* Accepted guests pay here too — not only from inside the party room. */}
+          {plan.isAttending && !plan.isHost && plan.chipIn && plan.upiId ? (
+            <PaperCard className="p-5">
+              <h2 className="text-2xl uppercase">{chipInDue ? "Your chip-in" : "Chip-in"}</h2>
+              <p className="mt-1 text-sm">
+                ₹{plan.chipIn.toLocaleString("en-IN")}
+                {plan.chipInNote && <> · {plan.chipInNote}</>}
+              </p>
+              <ChipInPay
+                planId={plan.id}
+                upiId={plan.upiId}
+                hostName={plan.host.name}
+                amount={plan.chipIn}
+                planTitle={plan.title}
+                payment={plan.myPayment ?? null}
+              />
+            </PaperCard>
+          ) : null}
+          <SharePlan planId={plan.id} title={plan.title} />
+        </div>
+
+        <div className="space-y-12 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <section>
             <SectionTitle kicker="No dress code. Good energy only." title="The vibe" />
             <div className="flex flex-wrap gap-2">
@@ -250,7 +339,7 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
           </section>
         </div>
 
-        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+        <aside className="space-y-5 lg:col-start-2 lg:row-start-2 lg:self-start">
           <div className="paper-card p-5">
             <p className="meta-label text-primary">Your host</p>
             <div className="mt-4 flex items-center gap-4">
@@ -292,32 +381,16 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
             </div>
           )}
 
-          {!plan.isAttending && !plan.isHost && (
-            <PaperCard className="p-5">
-              <h2 className="text-2xl uppercase">Want in?</h2>
-              <div className="mt-4">
-                {signedIn ? (
-                  <RequestToJoin
-                    planId={plan.id}
-                    planTitle={plan.title}
-                    requiredOfGuests={plan.requiredOfGuests}
-                    profile={me ?? undefined}
-                    questions={plan.rsvpQuestions}
-                    houseRules={plan.houseRules}
-                  />
-                ) : (
-                  // A forwarded link reaches people with no account; the form
-                  // would only 401. ?next= brings them back here after onboarding.
-                  <>
-                    <p className="text-sm">Hosts pick their crew from Baithak profiles. Make yours to ask in.</p>
-                    <Button href={`/sign-up?next=/plans/${plan.id}`} className="mt-4 w-full">
-                      Join Baithak to join this party
-                    </Button>
-                  </>
-                )}
-              </div>
-            </PaperCard>
-          )}
+          {plan.chipIn ? (
+            <div className="paper-card p-5">
+              <p className="meta-label text-primary">Chip-in</p>
+              <p className="mt-2 font-display text-3xl">₹{plan.chipIn.toLocaleString("en-IN")}</p>
+              <p className="mt-1 text-sm">{plan.chipInNote ?? "Per person"}</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Paid to the host directly — Baithak doesn&apos;t take payments.
+              </p>
+            </div>
+          ) : null}
 
           <div className="paper-card p-5">
             <p className="meta-label text-primary">Where</p>
@@ -344,8 +417,6 @@ export default async function PlanDetailsPage({ params }: PageProps<"/plans/[id]
               </div>
             </div>
           )}
-
-          <SharePlan planId={plan.id} title={plan.title} />
 
           {plan.viewerSignedIn && (
             <div className="border-t-2 border-foreground/20 pt-5">

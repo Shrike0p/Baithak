@@ -18,6 +18,9 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applic
   const body = await request.json();
   const status: ApplicationStatus = body.status;
 
+  // Confirming the chip-in arrived is its own action, not a decision.
+  if (typeof body.paid === "boolean") return confirmPayment(id, userId, body.paid);
+
   if (!DECISIONS.includes(status)) {
     return NextResponse.json(
       { error: `status must be one of ${DECISIONS.join(", ")}` },
@@ -33,6 +36,31 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applic
   if (!application) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (application.plan.hostId !== userId) {
     return NextResponse.json({ error: "not your plan" }, { status: 403 });
+  }
+
+  // Taking back a yes. This used to flip the application and leave the
+  // attendee row behind — the guest stayed in the party room with the
+  // address. Now the seat goes with it, the same way leaving works.
+  if (application.status === "ACCEPTED" && status !== "ACCEPTED") {
+    if (status !== "PASSED") {
+      return NextResponse.json({ error: "they're already in — remove them or leave it" }, { status: 409 });
+    }
+    const [updated] = await prisma.$transaction([
+      prisma.application.update({ where: { id }, data: { status: "PASSED", decidedAt: new Date() } }),
+      prisma.planAttendee.deleteMany({
+        where: { planId: application.planId, userId: application.applicantId, role: "GUEST" },
+      }),
+    ]);
+    notify({
+      userId: application.applicantId,
+      kind: "GUEST_REMOVED",
+      title: `You're off the list — ${application.plan.title}`,
+      body: "The host took you off this plan, so the party room and address are closed to you now.",
+      href: "/discover",
+      planId: application.planId,
+      actorId: userId,
+    });
+    return NextResponse.json(updated);
   }
 
   if (status !== "ACCEPTED") {
@@ -105,5 +133,25 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/applic
     actorId: userId,
   });
 
+  return NextResponse.json(updated);
+}
+
+/** Host only, accepted guests only: the chip-in did (or didn't) arrive. */
+async function confirmPayment(id: string, userId: string, paid: boolean) {
+  const application = await prisma.application.findUnique({
+    where: { id },
+    select: { status: true, plan: { select: { hostId: true, chipIn: true } } },
+  });
+  if (!application) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (application.plan.hostId !== userId) {
+    return NextResponse.json({ error: "not your plan" }, { status: 403 });
+  }
+  if (application.status !== "ACCEPTED" || !application.plan.chipIn) {
+    return NextResponse.json({ error: "there's no chip-in to confirm here" }, { status: 409 });
+  }
+  const updated = await prisma.application.update({
+    where: { id },
+    data: { paidConfirmedAt: paid ? new Date() : null },
+  });
   return NextResponse.json(updated);
 }

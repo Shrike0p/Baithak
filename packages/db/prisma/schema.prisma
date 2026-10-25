@@ -167,6 +167,18 @@ model Plan {
   // this host hasn't written any and the checkbox is skipped entirely.
   houseRules String?
 
+  // What each guest chips in, in whole rupees. Null = free. Display only:
+  // guests pay the host directly, Baithak never touches the money (yet).
+  chipIn     Int?
+  // What the chip-in covers — "food, snacks & the space".
+  chipInNote String?
+  // Where guests send the chip-in. Only ever leaves the API inside the party
+  // room — same gate as the exact address.
+  upiId      String?
+  // Host wants a number from everyone who asks. It's stored on the
+  // application and shown to the host only once that person is accepted.
+  askPhone   Boolean @default(false)
+
   attendees    PlanAttendee[]
   applications Application[]
   crowd        CrowdPreference?
@@ -268,6 +280,8 @@ enum NotificationKind {
   PLAN_CANCELLED
   PLAN_WRAPPED
   NEW_PHOTOS
+  GUEST_REMOVED
+  PAYMENT_CLAIMED
 }
 
 /**
@@ -455,6 +469,12 @@ model Application {
   answers Json @default("{}")
   // When they ticked the house rules. Null means this plan had none to tick.
   agreedAt DateTime?
+  // Given for this plan only, when the host asked. Normalised to +<country><number>.
+  phone    String?
+  // The chip-in, tracked by both sides since Baithak never sees the money:
+  // the guest says they sent it, the host confirms it arrived.
+  paidClaimedAt   DateTime?
+  paidConfirmedAt DateTime?
   createdAt    DateTime          @default(now())
   decidedAt    DateTime?
 

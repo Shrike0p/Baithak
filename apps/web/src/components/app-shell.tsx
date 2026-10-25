@@ -16,6 +16,7 @@ import {
 import { Logo } from "@/components/ui";
 import { AccountMenu } from "@/components/account-menu";
 import { NotificationBell } from "@/components/notification-bell";
+import { ProfileNudge } from "@/components/profile-nudge";
 import type { Me } from "@/lib/api";
 
 const NAV = [
@@ -115,13 +116,18 @@ export function AppShell({
           </button>
           <div className="hidden items-center gap-2 md:flex">
             <MapPin className="size-4 text-primary" />
-            <span className="meta-label">Bangalore · Your people</span>
+            <span className="meta-label">{me?.city ? `${me.city} · ` : ""}Your people</span>
           </div>
           <Logo compact href="/discover" />
           <div className="flex gap-2">
             <NotificationBell unread={unread} />
           </div>
         </header>
+
+        {/* /profile already shows the full card; onboarding is where it gets filled. */}
+        {me?.onboardedAt && !isActive("/profile") && !isActive("/onboarding") && (
+          <ProfileNudge strength={me.strength} />
+        )}
 
         <main>{children}</main>
       </div>

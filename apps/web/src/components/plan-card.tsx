@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { planArt } from "@/lib/plan-art";
 import { Pill } from "@/components/ui";
 import type { PlanSummary } from "@/lib/api";
+import { chipInLabel } from "@baithak/types";
 
 function formatWhen(iso: string) {
   return new Date(iso)
@@ -42,6 +43,8 @@ export function PlanCard({
             alt={`${plan.title} gathering`}
             width={large ? 1400 : 1100}
             height={large ? 1000 : 800}
+            // A host's not-yet-uploaded cover in the make-a-plan preview.
+            unoptimized={art.image.startsWith("blob:")}
             className={`${large ? "h-64 md:absolute md:inset-0 md:h-full" : "h-48"} w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]`}
           />
           <span className="absolute left-3 top-3">
@@ -55,8 +58,15 @@ export function PlanCard({
         </div>
 
         <div className={`${art.tone} flex flex-col p-5`}>
-          <p className="meta-label">{plan.neighborhood}</p>
-          <h3 className={`${large ? "text-4xl md:text-5xl" : "text-2xl"} mt-3 uppercase leading-none`}>
+          <p className="meta-label">
+            {plan.neighborhood}
+            {plan.chipIn ? <span className="text-primary"> · {chipInLabel(plan.chipIn)}</span> : null}
+          </p>
+          {/* Clamped and allowed to break mid-word: a 40-character name with
+              no spaces would otherwise run straight off the card. */}
+          <h3
+            className={`${large ? "text-4xl md:text-5xl" : "text-2xl"} mt-3 line-clamp-2 uppercase leading-none wrap-anywhere`}
+          >
             {plan.title}
           </h3>
 
@@ -64,6 +74,7 @@ export function PlanCard({
             {plan.vibeTags.slice(0, 3).map((tag) => (
               <Pill key={tag}>{tag}</Pill>
             ))}
+            {plan.vibeTags.length > 3 && <Pill tone="muted">+{plan.vibeTags.length - 3} more</Pill>}
           </div>
 
           <div className="mt-auto pt-6">

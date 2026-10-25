@@ -11,35 +11,48 @@
 
 export type UploadKind = "memory" | "avatar" | "cover";
 
+/** Every upload lands under this. Decimal MB, so it's under 1MB however the bucket counts. */
+export const MAX_UPLOAD_BYTES = 1_000_000;
+
 const MAX_EDGE = 2000;
 const QUALITY = 0.82;
+const MIN_QUALITY = 0.5;
 
 /**
- * Re-encodes to JPEG at a sane size. Two reasons beyond the storage bill:
- * iPhones shoot HEIC, which browsers won't render, and a 12MP original would
- * be rejected by the bucket's 5MB limit.
+ * Re-encodes to JPEG until it fits under MAX_UPLOAD_BYTES. Two reasons beyond
+ * the storage bill: iPhones shoot HEIC, which browsers won't render, and phone
+ * originals run 3–8MB. Quality drops first (cheap, barely visible down to
+ * ~0.5), then the long edge shrinks by a quarter per round.
  *
- * Falls back to the original file if the browser can't decode it — better to
- * attempt the upload and get a clear error than to fail silently here.
+ * Falls back to the original file if the browser can't decode it; uploadImage
+ * then refuses it if that original is too big.
  */
 async function shrink(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/")) return file;
 
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", QUALITY),
-    );
+    let edge = Math.min(MAX_EDGE, Math.max(bitmap.width, bitmap.height));
+    let quality = QUALITY;
+    let blob: Blob | null = null;
+
+    // ponytail: up to ~10 encodes on a huge photo; a binary search on quality
+    // would be fewer, but this is a one-off per upload on the user's device.
+    for (let round = 0; round < 10; round++) {
+      const scale = edge / Math.max(bitmap.width, bitmap.height);
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (!blob || blob.size <= MAX_UPLOAD_BYTES) break;
+      if (quality > MIN_QUALITY) quality = Math.max(MIN_QUALITY, quality - 0.1);
+      else edge = Math.round(edge * 0.75);
+    }
+    bitmap.close();
     return blob ?? file;
   } catch {
     return file;
@@ -57,6 +70,9 @@ export async function uploadImage(
   planId?: string,
 ): Promise<{ objectKey: string }> {
   const blob = await shrink(file);
+  if (blob.size > MAX_UPLOAD_BYTES) {
+    throw new Error("That photo is too big — try a different one, or a screenshot of it.");
+  }
   const contentType = blob.type || "image/jpeg";
 
   const permit = await fetch("/api/uploads", {

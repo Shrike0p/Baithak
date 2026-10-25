@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { getMyPlans, getApplicants } from "@/lib/api";
 import { ApplicantDesk } from "@/components/applicant-desk";
-import { Button, Pill, PaperCard } from "@/components/ui";
+import { Button, PaperCard } from "@/components/ui";
+import { HostPlanSwitcher } from "@/components/host-plan-switcher";
 
 export default async function HostDeskPage({ searchParams }: PageProps<"/host">) {
   const { plan: planParam } = await searchParams;
@@ -42,29 +42,17 @@ export default async function HostDeskPage({ searchParams }: PageProps<"/host">)
     // never the page. 4rem is the app shell's sticky header. Below lg it just
     // flows normally.
     <div className="lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col">
-      <div className="border-b-2 border-foreground px-5 py-7 md:px-8 lg:shrink-0">
+      {/* Kept short on purpose: on desktop every line here comes out of the
+          applicant panes below, which are the actual work. */}
+      <div className="border-b-2 border-foreground px-5 py-4 md:px-8 lg:shrink-0">
         <p className="meta-label text-primary">
-          {queue?.plan.title} · {queue?.plan.neighborhood}
+          {queue?.plan.title} · {queue?.plan.neighborhood} · We&apos;ve sorted the crowd, you make the call
         </p>
-        <h1 className="mt-2 text-4xl uppercase md:text-6xl">
+        <h1 className="mt-1 text-3xl uppercase md:text-4xl">
           {waiting === 0 ? "Nobody waiting." : `${waiting} ${waiting === 1 ? "person wants" : "people want"} in.`}
         </h1>
-        <p className="mt-2 text-muted-foreground">
-          We&apos;ve sorted the crowd. You make the call.
-        </p>
 
-        {hosting.length > 1 && (
-          <div className="mt-5 flex flex-wrap gap-2">
-            {hosting.map((p) => (
-              <Link key={p.id} href={`/host?plan=${p.id}`}>
-                <Pill tone={p.id === selectedId ? "orange" : "plain"}>
-                  {p.title}
-                  {p.pendingApplications > 0 && ` · ${p.pendingApplications}`}
-                </Pill>
-              </Link>
-            ))}
-          </div>
-        )}
+        {hosting.length > 1 && <HostPlanSwitcher plans={hosting} selectedId={selectedId} />}
       </div>
 
       {!queue ? (

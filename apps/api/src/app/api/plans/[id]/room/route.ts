@@ -45,6 +45,29 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
 
   const composition = composeCrew(plan.attendees);
   const myVibes = me.user.vibeTags;
+  const isHost = plan.hostId === userId;
+
+  // Guests' numbers, for the host only — given on the application, and these
+  // are all accepted people by definition (they're confirmed attendees).
+  const phones = isHost
+    ? new Map(
+        (
+          await prisma.application.findMany({
+            where: { planId: plan.id, status: "ACCEPTED", phone: { not: null } },
+            select: { applicantId: true, phone: true },
+          })
+        ).map((a) => [a.applicantId, a.phone]),
+      )
+    : new Map<string, string | null>();
+
+  // A guest's own side of the chip-in, so the room can say where it stands.
+  const myPayment =
+    !isHost && plan.chipIn
+      ? await prisma.application.findUnique({
+          where: { planId_applicantId: { planId: plan.id, applicantId: userId } },
+          select: { paidClaimedAt: true, paidConfirmedAt: true },
+        })
+      : null;
 
   // Previous nights by the same host — social proof inside the room.
   const previousNights = await prisma.plan.findMany({
@@ -63,8 +86,12 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
     capacity: plan.capacity,
     status: plan.status,
     imageUrl: plan.imageUrl,
+    chipIn: plan.chipIn,
+    chipInNote: plan.chipInNote,
+    upiId: plan.upiId,
+    myPayment,
     host: plan.host,
-    isHost: plan.hostId === userId,
+    isHost,
     composition,
     crew: plan.attendees.map((a) => ({
       role: a.role,
@@ -78,6 +105,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/plans/[i
         occupation: a.user.occupation,
         vibeTags: a.user.vibeTags,
         trustScore: a.user.trustScore,
+        phone: phones.get(a.userId) ?? null,
         plansAttended: a.user._count.attendances,
         // Explained, never a bare score — see docs/PRODUCT_PLAN.md §4.
         sharedVibes: a.user.vibeTags.filter((t) => myVibes.includes(t)),

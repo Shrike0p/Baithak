@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Trash2, XCircle } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 /**
  * What a host can do to their own party once it exists.
@@ -27,9 +28,9 @@ export function HostPlanControls({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState<"cancel" | "delete" | null>(null);
 
-  async function act(body: object, confirmation?: string) {
-    if (confirmation && !window.confirm(confirmation)) return;
+  async function act(body: object) {
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/plans/${planId}`, {
@@ -38,6 +39,7 @@ export function HostPlanControls({
       body: JSON.stringify(body),
     });
     setBusy(false);
+    setAsking(null);
     if (!res.ok) {
       setError((await res.json().catch(() => ({}))).error ?? "that didn't work");
       return;
@@ -46,12 +48,12 @@ export function HostPlanControls({
   }
 
   async function destroy() {
-    if (!window.confirm("Delete this plan for good? This can't be undone.")) return;
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/plans/${planId}`, { method: "DELETE" });
     setBusy(false);
     if (!res.ok) {
+      setAsking(null);
       setError((await res.json().catch(() => ({}))).error ?? "that didn't work");
       return;
     }
@@ -101,16 +103,7 @@ export function HostPlanControls({
           <button
             type="button"
             disabled={busy}
-            onClick={() =>
-              void act(
-                { status: "CANCELLED" },
-                confirmedGuests > 0
-                  ? `Cancel this plan? ${confirmedGuests} ${
-                      confirmedGuests === 1 ? "person has" : "people have"
-                    } been accepted and will see it's off.`
-                  : "Cancel this plan?",
-              )
-            }
+            onClick={() => setAsking("cancel")}
             className={`${button} bg-background`}
           >
             <XCircle className="size-4" /> Cancel plan
@@ -121,7 +114,7 @@ export function HostPlanControls({
           <button
             type="button"
             disabled={busy}
-            onClick={() => void destroy()}
+            onClick={() => setAsking("delete")}
             className={`${button} bg-background text-muted-foreground`}
           >
             <Trash2 className="size-4" /> Delete
@@ -136,6 +129,34 @@ export function HostPlanControls({
       )}
 
       {error && <p className="font-bold text-primary">{error}</p>}
+
+      <ConfirmDialog
+        open={asking === "cancel"}
+        onClose={() => setAsking(null)}
+        onConfirm={() => void act({ status: "CANCELLED" })}
+        title="Cancel this plan?"
+        confirmLabel="Cancel the plan"
+        danger
+        busy={busy}
+      >
+        {confirmedGuests > 0
+          ? `${confirmedGuests} ${confirmedGuests === 1 ? "person has" : "people have"} been accepted. They'll still see the plan, marked as off — so nobody turns up to a dark flat.`
+          : "Nobody's been accepted yet. The plan stays up, marked as cancelled."}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={asking === "delete"}
+        onClose={() => setAsking(null)}
+        onConfirm={() => void destroy()}
+        title="Delete for good?"
+        confirmLabel="Delete it"
+        danger
+        typeToConfirm="delete"
+        busy={busy}
+      >
+        The plan, its requests and its chat are gone, and this can&apos;t be undone. If you
+        might run it another time, cancel it instead.
+      </ConfirmDialog>
     </div>
   );
 }

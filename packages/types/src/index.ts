@@ -28,3 +28,5 @@ export * from "./areas";
 export * from "./rsvp";
 export * from "./profile";
 export * from "./trust";
+export * from "./chip-in";
+export * from "./contact";

@@ -20,8 +20,10 @@ const TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 
-// A photo bomb is bounded by whichever of these bites first. Supabase's bucket
-// rejects anything over 5MB on its own, so size needs no check here.
+// A photo bomb is bounded by whichever of these bites first. Size can't be
+// checked here — the bytes never pass through this API. The browser shrinks
+// everything under 1MB (apps/web/src/lib/upload.ts), and the bucket's own file
+// size limit, set to 1MB in Supabase, is what actually enforces it.
 const MAX_PHOTOS_PER_PLAN = 100;
 const MAX_UPLOADS_PER_HOUR = 30;
 
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
     //
     // ponytail: the hourly limit counts Photo rows, so it only covers
     // memories — a signed-in user could spam avatar/cover presigns and leave
-    // orphaned objects. Bounded by the bucket's 5MB per file and nothing else.
+    // orphaned objects. Bounded by the bucket's 1MB per file and nothing else.
     // Upgrade path if it ever matters: an Upload table, or a storage lifecycle
     // rule on objects never referenced by a row.
     objectKey = `avatars/${userId}/${randomUUID()}.${ext}`;

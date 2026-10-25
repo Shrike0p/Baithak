@@ -13,7 +13,7 @@ export default async function Page({ searchParams }: PageProps<"/sign-up">) {
   const spots = plans.reduce((n, p) => n + Math.max(0, p.capacity - p.confirmedCount), 0);
   const stat =
     plans.length > 0
-      ? `${plans.length} plans open in Bangalore · ${spots} spots left`
+      ? `${plans.length} plans open now · ${spots} spots left`
       : undefined;
 
   return (

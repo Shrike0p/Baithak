@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, ShieldCheck, UsersRound, X } from "lucide-react";
-import { decideApplication, type ApplicantQueue } from "@/lib/api";
+import { Check, ShieldCheck, UserMinus, UsersRound, X } from "lucide-react";
+import { confirmChipIn, decideApplication, type ApplicantQueue } from "@/lib/api";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Avatar } from "@/components/person-card";
 import { SocialBadge } from "@/components/social-badge";
 import { Button, Pill } from "@/components/ui";
@@ -14,7 +15,19 @@ const BUCKETS = [
   { key: "good", label: "Good fit" },
   { key: "new", label: "New people" },
   { key: "later", label: "Review later" },
+  // Accepted people used to vanish from the desk, taking their number and
+  // the chip-in with them. They live here now.
+  { key: "going", label: "Going" },
 ] as const;
+
+type Queued = ApplicantQueue["applications"][number];
+
+/** Where a guest's chip-in stands, from both sides' taps. */
+function paymentState(a: Queued) {
+  if (a.paidConfirmedAt) return { label: "Paid ✓", tone: "green" as const };
+  if (a.paidClaimedAt) return { label: "Says paid", tone: "orange" as const };
+  return { label: "Not paid", tone: "muted" as const };
+}
 
 const BRINGING_LABEL = {
   SOLO: "Coming solo",
@@ -25,6 +38,9 @@ const BRINGING_LABEL = {
 export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
   const router = useRouter();
   const pending = queue.applications.filter((a) => a.status === "PENDING" || a.status === "REVIEW_LATER");
+  const going = queue.applications.filter((a) => a.status === "ACCEPTED");
+  const chipIn = queue.plan.chipIn;
+  const [removing, setRemoving] = useState(false);
 
   const [bucket, setBucket] = useState<(typeof BUCKETS)[number]["key"]>("best");
   const [selectedId, setSelectedId] = useState<string | null>(pending[0]?.id ?? null);
@@ -33,10 +49,36 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
   const { play } = useSound();
 
   const counts = Object.fromEntries(
-    BUCKETS.map((b) => [b.key, pending.filter((a) => a.bucket === b.key).length])
+    BUCKETS.map((b) => [b.key, b.key === "going" ? going.length : pending.filter((a) => a.bucket === b.key).length])
   );
-  const listed = pending.filter((a) => a.bucket === bucket);
-  const selected = pending.find((a) => a.id === selectedId) ?? listed[0] ?? pending[0];
+  const isGoing = bucket === "going";
+  const listed = isGoing ? going : pending.filter((a) => a.bucket === bucket);
+  const pool = isGoing ? going : pending;
+  const selected = pool.find((a) => a.id === selectedId) ?? listed[0] ?? (isGoing ? undefined : pending[0]);
+
+  async function markPaid(paid: boolean) {
+    if (!selected || busy) return;
+    setBusy(true);
+    try {
+      await confirmChipIn(selected.id, paid);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!selected || busy) return;
+    setBusy(true);
+    try {
+      await decideApplication(selected.id, "PASSED");
+      setRemoving(false);
+      setSelectedId(going.find((a) => a.id !== selected.id)?.id ?? null);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function decide(status: "ACCEPTED" | "PASSED" | "REVIEW_LATER") {
     if (!selected || busy) return;
@@ -107,6 +149,11 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
                     ★ {a.applicant.trustScore.toFixed(1)}
                   </span>
                 </div>
+                {isGoing && chipIn ? (
+                  <div className="mt-2">
+                    <Pill tone={paymentState(a).tone}>{paymentState(a).label}</Pill>
+                  </div>
+                ) : null}
               </button>
             ))}
           </div>
@@ -118,9 +165,9 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
         <div className="flex-1 p-5 lg:min-h-0 lg:overflow-y-auto lg:p-8">
         {!selected ? (
           <div className="py-20 text-center">
-            <h2 className="text-3xl uppercase">You&apos;re all caught up.</h2>
+            <h2 className="text-3xl uppercase">{isGoing ? "Nobody's in yet." : "You're all caught up."}</h2>
             <p className="mt-2 text-muted-foreground">
-              Every request has an answer. Nice work.
+              {isGoing ? "Accept someone and they'll show up here, with their number." : "Every request has an answer. Nice work."}
             </p>
           </div>
         ) : (
@@ -144,6 +191,21 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
             </div>
 
             {selected.applicant.bio && <p className="mt-6">{selected.applicant.bio}</p>}
+
+            {selected.phoneGiven && (
+              <p className="mt-6 border-2 border-foreground bg-muted p-3 text-sm">
+                {selected.phone ? (
+                  <>
+                    <span className="font-bold">Phone · </span>
+                    <a href={`tel:${selected.phone}`} className="font-mono font-bold underline">
+                      {selected.phone}
+                    </a>
+                  </>
+                ) : (
+                  <span className="font-bold">📞 Gave a number — you&apos;ll see it once you accept.</span>
+                )}
+              </p>
+            )}
 
             {selected.note && (
               <div className="paper-card mt-6 p-4">
@@ -215,8 +277,51 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
         )}
         </div>
 
+        {/* Someone already in: their chip-in, and the way to take back a yes. */}
+        {selected?.status === "ACCEPTED" && (
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-t-2 border-foreground bg-background p-4 lg:p-5">
+            {chipIn ? (
+              <>
+                <Pill tone={paymentState(selected).tone}>
+                  ₹{chipIn.toLocaleString("en-IN")} · {paymentState(selected).label}
+                </Pill>
+                {selected.paidConfirmedAt ? (
+                  <Button variant="outline" size="sm" onClick={() => void markPaid(false)} disabled={busy}>
+                    Undo paid
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => void markPaid(true)} disabled={busy}>
+                    <Check /> Mark as paid
+                  </Button>
+                )}
+              </>
+            ) : (
+              <p className="text-sm font-bold">They&apos;re in ✓</p>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setRemoving(true)} disabled={busy} className="ml-auto">
+              <UserMinus /> Remove from plan
+            </Button>
+          </div>
+        )}
+
+        <ConfirmDialog
+          open={removing}
+          onClose={() => setRemoving(false)}
+          onConfirm={() => void remove()}
+          title={`Remove ${selected?.applicant.name.split(" ")[0] ?? "them"}?`}
+          confirmLabel="Remove"
+          danger
+          busy={busy}
+        >
+          {chipIn && selected && !selected.paidConfirmedAt
+            ? `Their chip-in isn't marked as paid${selected.paidClaimedAt ? " — though they say they've sent it, so check your UPI app first" : ""}. `
+            : ""}
+          They lose the party room and the address, their spot opens up, and they&apos;re told
+          they&apos;re off the list.
+        </ConfirmDialog>
+
         {/* Pinned: the verdict shouldn't scroll away while you read. */}
-        {selected && (
+        {selected && selected.status !== "ACCEPTED" && (
           <div className="flex shrink-0 flex-wrap gap-3 border-t-2 border-foreground bg-background p-4 lg:p-5">
             <Button variant="outline" onClick={() => decide("PASSED")} disabled={busy}>
               <X /> Pass
@@ -262,6 +367,24 @@ export function ApplicantDesk({ queue }: { queue: ApplicantQueue }) {
             </ul>
           </div>
         )}
+
+        {chipIn && going.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setBucket("going")}
+            className="mt-6 w-full border-2 border-foreground bg-card p-4 text-left"
+          >
+            <p className="meta-label text-primary">Chip-ins · ₹{chipIn.toLocaleString("en-IN")} each</p>
+            <p className="mt-1 font-display text-2xl">
+              {going.filter((a) => a.paidConfirmedAt).length} / {going.length} paid
+            </p>
+            {going.some((a) => a.paidClaimedAt && !a.paidConfirmedAt) && (
+              <p className="mt-1 text-sm font-bold text-primary">
+                {going.filter((a) => a.paidClaimedAt && !a.paidConfirmedAt).length} say they&apos;ve paid — check and confirm
+              </p>
+            )}
+          </button>
+        ) : null}
 
         <div className="mt-6 flex flex-col gap-2">
           <Button href={`/plans/${queue.plan.id}`} variant="outline" size="sm">

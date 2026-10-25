@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Flag, LogOut } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const REASONS = [
   { value: "UNSAFE_BEHAVIOUR", label: "Something unsafe" },
@@ -37,14 +38,17 @@ export function PlanSafety({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   async function leave() {
-    if (!window.confirm("Leave this plan? Your seat goes back to the host.")) return;
     setBusy(true);
     const res = await fetch(`/api/plans/${planId}/attendance`, { method: "DELETE" });
     setBusy(false);
     if (res.ok) router.push("/plans");
-    else setError((await res.json().catch(() => ({}))).error ?? "that didn't work");
+    else {
+      setConfirmLeave(false);
+      setError((await res.json().catch(() => ({}))).error ?? "that didn't work");
+    }
   }
 
   async function report() {
@@ -87,7 +91,7 @@ export function PlanSafety({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-4">
         {isAttending && !isHost && (
-          <button type="button" onClick={() => void leave()} disabled={busy} className={link}>
+          <button type="button" onClick={() => setConfirmLeave(true)} disabled={busy} className={link}>
             <LogOut className="size-3.5" /> Leave this plan
           </button>
         )}
@@ -147,6 +151,19 @@ export function PlanSafety({
       )}
 
       {error && <p className="text-sm font-bold text-primary">{error}</p>}
+
+      <ConfirmDialog
+        open={confirmLeave}
+        onClose={() => setConfirmLeave(false)}
+        onConfirm={() => void leave()}
+        title="Leave this plan?"
+        confirmLabel="Leave"
+        cancelLabel="Stay"
+        danger
+        busy={busy}
+      >
+        Your seat goes back to the host, and you&apos;ll lose access to the party room.
+      </ConfirmDialog>
     </div>
   );
 }
